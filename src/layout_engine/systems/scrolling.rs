@@ -910,6 +910,18 @@ impl LayoutState {
             let old = self.viewport.offset();
             self.viewport.rebase(column.world_x + bookmark.relative_offset - old);
         }
+        // Width pinning (preserve_window_sizes) can resize columns during this
+        // rebuild, after the camera was already anchored to the pre-pin width.
+        // Under anchored navigation the focused column must track the
+        // configured alignment instead of keeping the stale offset — otherwise
+        // a window reopened after a wider one inherits that window's left
+        // edge. Gestures own the camera while active.
+        if !matches!(self.viewport, Viewport::Gesture(_))
+            && settings.focus_navigation_style == ScrollingFocusNavigationStyle::Anchored
+            && !self.columns.is_empty()
+        {
+            self.reveal(settings);
+        }
         self.reconcile_camera_bounds();
         if initial {
             self.viewport = Viewport::Static(0.0);
@@ -2916,6 +2928,52 @@ pub(crate) mod tests {
             frame,
             CGRect::new(CGPoint::ZERO, CGSize::new(1000.0, 800.0)),
             "fullscreen-sized unidentified windows must present at the screen frame"
+        );
+    }
+
+    #[test]
+    fn single_window_reopens_centered_after_other_widths() {
+        let mut f = Fixture::new(0);
+        let mut settings = f.system.settings.clone();
+        settings.alignment = ScrollingAlignment::Center;
+        settings.focus_navigation_style = ScrollingFocusNavigationStyle::Anchored;
+        settings.preserve_window_sizes = true;
+        f.system.update_settings(&settings);
+
+        let mut add_fixed_window = |f: &mut Fixture, index: u32, width: f64| {
+            f.constraints.insert(
+                wid(index),
+                WindowLayoutConstraints {
+                    is_resizable: false,
+                    locked_width: width,
+                    locked_height: 700.0,
+                    auto_fullscreen: false,
+                    ..Default::default()
+                },
+            );
+            f.system.add_window_after_selection(f.layout, wid(index));
+            f.select(index);
+            f.prepare();
+        };
+
+        add_fixed_window(&mut f, 1, 400.0);
+        let frame = f.frame(1);
+        eprintln!("terminal frame: {frame:?}");
+        assert_eq!(frame.size.width, 400.0, "locked width honored");
+        assert_eq!(frame.origin.x, 300.0, "terminal centers");
+        f.system.remove_window(wid(1));
+        f.prepare();
+
+        add_fixed_window(&mut f, 2, 600.0);
+        assert_eq!(f.frame(2).origin.x, 200.0, "firefox centers");
+        f.system.remove_window(wid(2));
+        f.prepare();
+
+        add_fixed_window(&mut f, 1, 400.0);
+        assert_eq!(
+            f.frame(1).origin.x,
+            300.0,
+            "reopening a single window must re-center instead of keeping the previous window's left edge"
         );
     }
 
