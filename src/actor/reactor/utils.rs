@@ -57,7 +57,13 @@ pub(super) fn compute_window_info_manageability(
         return false;
     }
 
-    let allow_nonstandard_window = is_ibkr_desktop_dialog(info);
+    // An AXWindow reporting the AXUnknown subrole carries no classification:
+    // Wine game windows, Java/Swing frames and similar toolkits never set a
+    // subrole at all. Only processes without a LaunchServices identity take
+    // this relaxation — bundled apps keep their unclassified windows
+    // (Qt tooltips and friends) out of the layout.
+    let allow_nonstandard_window = is_ibkr_desktop_dialog(info)
+        || (info.bundle_id.is_none() && info.ax_subrole.as_deref() == Some("AXUnknown"));
     if !info.is_standard && !allow_nonstandard_window {
         return false;
     }

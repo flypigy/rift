@@ -62,6 +62,12 @@ impl ProcessSerialNumber {
     }
 }
 
+/// Liveness check that works for processes LaunchServices does not track as
+/// applications (e.g. Wine loaders); `GetProcessForPID` fails once they exit.
+pub fn process_alive(pid: pid_t) -> bool {
+    ProcessSerialNumber::for_pid(pid).is_ok()
+}
+
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     // Deprecated in macOS 10.9.

@@ -135,7 +135,9 @@ impl MouseFocusPublisher {
         })
     }
 
-    fn take_latest(&self) -> Option<CGPoint> { self.0.latest.lock().take() }
+    fn take_latest(&self) -> Option<CGPoint> {
+        self.0.latest.lock().take()
+    }
 }
 
 #[cfg(test)]
@@ -171,11 +173,17 @@ pub struct ReactorHandle {
 }
 
 impl ReactorHandle {
-    pub fn new(sender: Sender, queries: ReactorQueryHandle) -> Self { Self { sender, queries } }
+    pub fn new(sender: Sender, queries: ReactorQueryHandle) -> Self {
+        Self { sender, queries }
+    }
 
-    pub fn sender(&self) -> Sender { self.sender.clone() }
+    pub fn sender(&self) -> Sender {
+        self.sender.clone()
+    }
 
-    pub fn send(&self, event: Event) { self.sender.send(event) }
+    pub fn send(&self, event: Event) {
+        self.sender.send(event)
+    }
 
     pub fn try_send(
         &self,
@@ -188,7 +196,9 @@ impl ReactorHandle {
 impl std::ops::Deref for ReactorHandle {
     type Target = ReactorQueryHandle;
 
-    fn deref(&self) -> &Self::Target { &self.queries }
+    fn deref(&self) -> &Self::Target {
+        &self.queries
+    }
 }
 
 use crate::model::server::RuntimeWindowData;
@@ -593,7 +603,9 @@ impl Reactor {
         }
     }
 
-    fn is_space_active(&self, space: SpaceId) -> bool { self.active_spaces.contains(&space) }
+    fn is_space_active(&self, space: SpaceId) -> bool {
+        self.active_spaces.contains(&space)
+    }
 
     fn iter_active_spaces(&self) -> impl Iterator<Item = SpaceId> + '_ {
         self.active_spaces.iter().copied()
@@ -979,7 +991,9 @@ impl Reactor {
         }
     }
 
-    fn is_in_drag(&self) -> bool { self.drag_manager.actor.is_active() }
+    fn is_in_drag(&self) -> bool {
+        self.drag_manager.actor.is_active()
+    }
 
     fn is_mission_control_active(&self) -> bool {
         matches!(
@@ -1276,7 +1290,9 @@ impl Reactor {
     }
 
     #[instrument(name = "reactor::handle_event", skip(self), fields(event=?event))]
-    fn handle_event_traced(&mut self, event: Event) { self.handle_event_inner(event) }
+    fn handle_event_traced(&mut self, event: Event) {
+        self.handle_event_inner(event)
+    }
 
     fn handle_event_inner(&mut self, event: Event) {
         let may_make_ready = matches!(&event, Event::SpaceStateChanged(_));
@@ -1726,11 +1742,18 @@ impl Reactor {
                 let owner_pid = window_server_info.as_ref().map(|info| info.pid);
                 let app_known =
                     owner_pid.is_some_and(|pid| self.app_manager.apps.contains_key(&pid));
-                let running_app_info = owner_pid.filter(|_| !app_known).and_then(|pid| {
+                let running_app_info = owner_pid.filter(|_| !app_known).map(|pid| {
+                    // WindowServer-discovered processes without a LaunchServices
+                    // identity (Wine loaders) still get an adoption event; the
+                    // app actor synthesizes its own display name.
                     objc2_app_kit::NSRunningApplication::runningApplicationWithProcessIdentifier(
                         pid,
                     )
                     .map(|app| AppInfo::from(&*app))
+                    .unwrap_or(AppInfo {
+                        bundle_id: None,
+                        localized_name: None,
+                    })
                 });
                 let observations = topology_workflow::WindowServerAppearedObservations {
                     resolved_space: self.resolve_native_space(wsid, Some(sid)),
@@ -2186,6 +2209,23 @@ impl Reactor {
                         && info.layer == 0
                         && !self.window_inventory_manager.in_flight.contains_key(&info.pid)
                     {
+                        if !self.app_manager.apps.contains_key(&info.pid) {
+                            // The owning process was never registered (unbundled
+                            // Wine loaders and similar): hover or click evidence
+                            // is enough to spawn an app actor for it, which then
+                            // discovers the window through its own inventory.
+                            if let Some(wm) = self.communication_manager.wm_sender.as_ref() {
+                                wm.send(crate::actor::wm_controller::WmEvent::AppLaunch(
+                                    info.pid,
+                                    AppInfo {
+                                        bundle_id: None,
+                                        localized_name: None,
+                                    },
+                                    crate::actor::wm_controller::AppDiscoverySource::WindowServer,
+                                ));
+                            }
+                            return Ok(EventOutcome::default());
+                        }
                         self.request_window_inventory(info.pid);
                     }
                     return Ok(EventOutcome::default());
@@ -5169,10 +5209,13 @@ impl Reactor {
                 let Some(window) = self.state.windows.window(wid) else {
                     continue;
                 };
-                self.send_layout_event(LayoutEvent::WindowObserved(space, ResolvedWindow {
-                    info: window.layout_info(wid),
-                    effects,
-                }));
+                self.send_layout_event(LayoutEvent::WindowObserved(
+                    space,
+                    ResolvedWindow {
+                        info: window.layout_info(wid),
+                        effects,
+                    },
+                ));
             }
         }
     }
@@ -5896,7 +5939,9 @@ impl Reactor {
         }
     }
 
-    pub(crate) fn main_window(&self) -> Option<WindowId> { self.main_window_tracker.main_window() }
+    pub(crate) fn main_window(&self) -> Option<WindowId> {
+        self.main_window_tracker.main_window()
+    }
 
     fn main_window_space(&self) -> Option<SpaceId> {
         // TODO: Optimize this with a cache or something.
@@ -5925,7 +5970,9 @@ impl Reactor {
         (self.workspace_command_space() == Some(space)).then_some((space, window))
     }
 
-    fn raw_command_space(&self) -> Option<SpaceId> { self.space_state.command_space }
+    fn raw_command_space(&self) -> Option<SpaceId> {
+        self.space_state.command_space
+    }
 
     fn active_display_space(&self) -> Option<SpaceId> {
         self.raw_command_space()

@@ -132,7 +132,9 @@ pub struct WindowId {
 
 impl serde::ser::Serialize for WindowId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::ser::Serializer {
+    where
+        S: serde::ser::Serializer,
+    {
         use serde::ser::SerializeStruct;
         let mut s = serializer.serialize_struct("WindowId", 2)?;
         s.serialize_field("pid", &self.pid)?;
@@ -143,7 +145,9 @@ impl serde::ser::Serialize for WindowId {
 
 impl<'de> serde::de::Deserialize<'de> for WindowId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::de::Deserializer<'de> {
+    where
+        D: serde::de::Deserializer<'de>,
+    {
         struct WindowIdVisitor;
         impl<'de> serde::de::Visitor<'de> for WindowIdVisitor {
             type Value = WindowId;
@@ -155,13 +159,17 @@ impl<'de> serde::de::Deserialize<'de> for WindowId {
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where E: serde::de::Error {
+            where
+                E: serde::de::Error,
+            {
                 WindowId::from_debug_string(v)
                     .ok_or_else(|| E::custom("invalid WindowId debug string"))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<WindowId, A::Error>
-            where A: serde::de::SeqAccess<'de> {
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
                 let pid: pid_t = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
@@ -176,7 +184,9 @@ impl<'de> serde::de::Deserialize<'de> for WindowId {
             }
 
             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-            where M: serde::de::MapAccess<'de> {
+            where
+                M: serde::de::MapAccess<'de>,
+            {
                 let mut pid: Option<pid_t> = None;
                 let mut idx: Option<u32> = None;
 
@@ -235,7 +245,9 @@ impl WindowId {
         })
     }
 
-    pub fn to_debug_string(&self) -> String { format!("{:?}", self) }
+    pub fn to_debug_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 impl AxNotificationKind {
@@ -476,7 +488,9 @@ impl AppThreadHandle {
         )
     }
 
-    pub(crate) fn can_write_frames(&self) -> bool { self.frame_authority.is_current() }
+    pub(crate) fn can_write_frames(&self) -> bool {
+        self.frame_authority.is_current()
+    }
 
     pub(crate) fn same_actor(&self, other: &Self) -> bool {
         self.requests_tx.same_channel(&other.requests_tx)
@@ -678,7 +692,9 @@ pub enum Quiet {
 
 struct ExitGuard(wm_controller::Sender, pid_t, AppThreadHandle);
 impl Drop for ExitGuard {
-    fn drop(&mut self) { self.0.send(WmEvent::AppExited(self.1, self.2.clone())); }
+    fn drop(&mut self) {
+        self.0.send(WmEvent::AppExited(self.1, self.2.clone()));
+    }
 }
 
 pub fn spawn_app_thread(
@@ -705,7 +721,7 @@ pub fn spawn_app_thread(
 struct State {
     pid: pid_t,
     bundle_id: Option<String>,
-    running_app: Retained<NSRunningApplication>,
+    running_app: Option<Retained<NSRunningApplication>>,
     app: AXUIElement,
     observer: Observer,
     events_tx: reactor::Sender,
@@ -744,13 +760,17 @@ trait FrameTarget {
 }
 
 impl FrameTarget for AXUIElement {
-    fn frame(&self) -> Result<CGRect, AxError> { AXUIElement::frame(self) }
+    fn frame(&self) -> Result<CGRect, AxError> {
+        AXUIElement::frame(self)
+    }
 
     fn set_position(&self, origin: CGPoint) -> Result<(), AxError> {
         AXUIElement::set_position(self, origin)
     }
 
-    fn set_size(&self, size: CGSize) -> Result<(), AxError> { AXUIElement::set_size(self, size) }
+    fn set_size(&self, size: CGSize) -> Result<(), AxError> {
+        AXUIElement::set_size(self, size)
+    }
 }
 
 /// Fence each setter, including hint-correction and animation-end repairs.
@@ -762,7 +782,9 @@ struct AuthorizedFrameTarget<'a, T> {
 }
 
 impl<T: FrameTarget> FrameTarget for AuthorizedFrameTarget<'_, T> {
-    fn frame(&self) -> Result<CGRect, AxError> { self.target.frame() }
+    fn frame(&self) -> Result<CGRect, AxError> {
+        self.target.frame()
+    }
 
     fn set_position(&self, origin: CGPoint) -> Result<(), AxError> {
         if self.authority.is_current() {
@@ -803,7 +825,9 @@ impl FrameWrites {
         }
     }
 
-    fn any(self) -> bool { self.position || self.size }
+    fn any(self) -> bool {
+        self.position || self.size
+    }
 }
 
 /// Issues each requested setter independently, since apps may reject one and
@@ -1143,7 +1167,14 @@ impl State {
                 }
                 Ok(false) => (),
                 #[allow(non_upper_case_globals)]
-                Err(AxError::Ax(AXError::CannotComplete)) if state.running_app.isTerminated() => {
+                Err(AxError::Ax(AXError::CannotComplete))
+                    if state
+                        .running_app
+                        .as_ref()
+                        .is_some_and(|running_app| running_app.isTerminated())
+                        || state.running_app.is_none()
+                            && !crate::sys::process::process_alive(state.pid) =>
+                {
                     warn!(?state.bundle_id, ?state.pid, "Application terminated without notification");
                     should_terminate = true;
                     break;
@@ -1389,15 +1420,18 @@ impl State {
             }
             Request::InteractiveFramesPending(frames) => {
                 frames.drain_with(|wid, frame, set_size, txid, source, sequence, authority| {
-                    pending_frames.insert(wid, PendingFrame {
-                        span: Span::current(),
-                        frame,
-                        set_size,
-                        txid,
-                        source,
-                        sequence,
-                        authority,
-                    });
+                    pending_frames.insert(
+                        wid,
+                        PendingFrame {
+                            span: Span::current(),
+                            frame,
+                            set_size,
+                            txid,
+                            source,
+                            sequence,
+                            authority,
+                        },
+                    );
                 });
             }
             Request::SetWindowFrames(frames, txid, mode, _, _) => {
@@ -1798,7 +1832,9 @@ enum RaiseError {
 }
 
 impl From<AxError> for RaiseError {
-    fn from(value: AxError) -> Self { Self::AXError(value) }
+    fn from(value: AxError) -> Self {
+        Self::AXError(value)
+    }
 }
 
 impl State {
@@ -2222,19 +2258,22 @@ impl State {
         let hidden_by_app = self.is_hidden;
         let last_seen_txid = self.txid_from_store(Some(window_server_id)).unwrap_or_default();
 
-        let old = self.windows.insert(wid, AppWindowState {
-            elem: elem.clone(),
-            notifications_registered,
-            last_seen_txid,
-            hidden_by_app,
-            window_server_id: Some(window_server_id),
-            title: info.title.clone(),
-            is_animating: false,
-            animation_authority: Default::default(),
-            last_animation_frame: None,
-            last_known_frame: info.frame,
-            frame_source: FrameSource::Ordinary,
-        });
+        let old = self.windows.insert(
+            wid,
+            AppWindowState {
+                elem: elem.clone(),
+                notifications_registered,
+                last_seen_txid,
+                hidden_by_app,
+                window_server_id: Some(window_server_id),
+                title: info.title.clone(),
+                is_animating: false,
+                animation_authority: Default::default(),
+                last_animation_frame: None,
+                last_known_frame: info.frame,
+                frame_source: FrameSource::Ordinary,
+            },
+        );
         debug_assert!(old.is_none(), "Duplicate window id {wid:?}");
         self.elem_to_wid.insert(elem, wid);
         if hidden_by_app {
@@ -2500,7 +2539,9 @@ impl State {
         }
     }
 
-    fn send_event(&self, event: Event) { self.events_tx.send(event); }
+    fn send_event(&self, event: Event) {
+        self.events_tx.send(event);
+    }
 
     fn window(&self, wid: WindowId) -> Result<&AppWindowState, AxError> {
         assert_eq!(wid.pid, self.pid);
@@ -2640,12 +2681,12 @@ pub(crate) async fn run_app(
     requests_rx: actor::Receiver<Request>,
 ) {
     let app = AXUIElement::application(pid);
-    let Some(running_app) = NSRunningApplication::with_process_id(pid) else {
-        info!(?pid, "Making NSRunningApplication failed; exiting app thread");
-        return;
-    };
+    // Processes discovered through the WindowServer (Wine loaders running
+    // games, other unbundled apps) have no LaunchServices identity; manage
+    // them through AX alone.
+    let running_app = NSRunningApplication::with_process_id(pid);
 
-    let bundle_id = running_app.bundleIdentifier();
+    let bundle_id = running_app.as_ref().and_then(|running_app| running_app.bundleIdentifier());
 
     let Ok(process_info) = ProcessInfo::for_pid(pid) else {
         info!(?pid, ?bundle_id, "Could not get ProcessInfo; exiting app thread");
@@ -2677,7 +2718,12 @@ pub(crate) async fn run_app(
         info.bundle_id = bundle_id.as_deref().map(ToString::to_string);
     }
     if info.localized_name.is_none() {
-        info.localized_name = running_app.localizedName().as_deref().map(ToString::to_string);
+        info.localized_name = running_app.as_ref().and_then(|running_app| {
+            running_app.localizedName().as_deref().map(ToString::to_string)
+        });
+    }
+    if info.localized_name.is_none() {
+        info.localized_name = Some(format!("Process {pid}"));
     }
 
     let state = State {

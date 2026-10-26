@@ -127,7 +127,9 @@ static BUILTIN_WM_CMD_VARIANTS: Lazy<Vec<String>> = Lazy::new(|| {
 });
 
 impl WmCmd {
-    pub fn snake_case_variants() -> &'static [String] { &BUILTIN_WM_CMD_VARIANTS }
+    pub fn snake_case_variants() -> &'static [String] {
+        &BUILTIN_WM_CMD_VARIANTS
+    }
 }
 
 pub struct Config {
@@ -447,9 +449,36 @@ impl WmController {
             return;
         }
         let Some(running_app) = NSRunningApplication::with_process_id(pid) else {
+            // The user just activated a process without a LaunchServices
+            // identity (a Wine loader running a game): activation is adoption
+            // evidence, so spawn its app actor directly.
+            self.spawn_unidentified_app(
+                pid,
+                AppInfo {
+                    bundle_id: None,
+                    localized_name: None,
+                },
+            );
             return;
         };
         self.new_app(pid, AppInfo::from(&*running_app), AppDiscoverySource::Process);
+    }
+
+    /// Spawn an app thread for a process that has no NSRunningApplication.
+    fn spawn_unidentified_app(&mut self, pid: pid_t, info: AppInfo) {
+        if let Some((handle, rx)) =
+            self.apps.reserve(pid, info.clone(), AppDiscoverySource::WindowServer)
+        {
+            actor::app::spawn_app_thread(
+                pid,
+                info,
+                self.events_tx.clone(),
+                self.window_tx_store.clone(),
+                self.sender.clone(),
+                handle,
+                rx,
+            );
+        }
     }
 
     fn new_app(&mut self, pid: pid_t, info: AppInfo, source: AppDiscoverySource) {
@@ -458,8 +487,21 @@ impl WmController {
             return;
         }
 
-        let Some(running_app) = NSRunningApplication::with_process_id(pid) else {
-            debug!(?pid, "Failed to resolve NSRunningApplication for new app");
+        let running_app = match NSRunningApplication::with_process_id(pid) {
+            Some(running_app) => Some(running_app),
+            // Unbundled processes (Wine loaders running games and similar) are
+            // invisible to LaunchServices and have no NSRunningApplication. The
+            // WindowServer-discovery source only fires for layer-0 windows that
+            // look like application windows, which is adoption evidence enough.
+            None if source == AppDiscoverySource::WindowServer => None,
+            None => {
+                debug!(?pid, "Failed to resolve NSRunningApplication for new app");
+                return;
+            }
+        };
+
+        let Some(running_app) = running_app else {
+            self.spawn_unidentified_app(pid, info);
             return;
         };
 
