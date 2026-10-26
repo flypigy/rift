@@ -104,6 +104,7 @@ impl WindowState {
         WindowLayoutInfo {
             window_id: wid,
             title: Some(self.info.title.clone()),
+            bundle_id: self.info.bundle_id.clone(),
             ax_role: self.info.ax_role.clone(),
             ax_subrole: self.info.ax_subrole.clone(),
             is_resizable: self.info.is_resizable,
@@ -122,7 +123,9 @@ impl WindowState {
         !self.info.is_minimized && manage_override.unwrap_or(self.is_manageable)
     }
 
-    pub(crate) fn can_reconcile_admission(&self) -> bool { !self.info.is_minimized }
+    pub(crate) fn can_reconcile_admission(&self) -> bool {
+        !self.info.is_minimized
+    }
 }
 
 use thiserror::Error;
@@ -163,11 +166,14 @@ mod tests {
 
         let restored: ReactorCommand = serde_json::from_value(serialized).unwrap();
 
-        assert_eq!(restored, ReactorCommand::RestoreLayout {
-            path: "layout.ron".into(),
-            scope: RestoreScope::Workspace,
-            source: RestoreSource::SavedActiveSpace,
-        });
+        assert_eq!(
+            restored,
+            ReactorCommand::RestoreLayout {
+                path: "layout.ron".into(),
+                scope: RestoreScope::Workspace,
+                source: RestoreSource::SavedActiveSpace,
+            }
+        );
     }
 }
 use objc2_core_foundation::CGRect;

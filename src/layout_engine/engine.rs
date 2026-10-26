@@ -95,6 +95,7 @@ pub struct GroupContainerInfo {
 pub(crate) struct WindowLayoutInfo {
     pub(crate) window_id: WindowId,
     pub(crate) title: Option<String>,
+    pub(crate) bundle_id: Option<String>,
     pub(crate) ax_role: Option<String>,
     pub(crate) ax_subrole: Option<String>,
     pub(crate) is_resizable: bool,
@@ -171,7 +172,9 @@ pub struct LayoutEventOutcome {
 impl std::ops::Deref for LayoutEventOutcome {
     type Target = EventResponse;
 
-    fn deref(&self) -> &Self::Target { &self.response }
+    fn deref(&self) -> &Self::Target {
+        &self.response
+    }
 }
 
 pub struct LayoutEngine {
@@ -219,7 +222,9 @@ pub(crate) struct WorkspaceLayoutQuerySnapshot {
 }
 
 impl LayoutEngine {
-    pub fn focused_window(&self) -> Option<WindowId> { self.focused_window }
+    pub fn focused_window(&self) -> Option<WindowId> {
+        self.focused_window
+    }
 
     pub(crate) fn apply_window_drop(
         &mut self,
@@ -1875,7 +1880,9 @@ impl LayoutEngine {
         }
     }
 
-    pub fn debug_tree(&self, space: SpaceId) { self.debug_tree_desc(space, "", false); }
+    pub fn debug_tree(&self, space: SpaceId) {
+        self.debug_tree_desc(space, "", false);
+    }
 
     pub fn debug_tree_desc(&self, space: SpaceId, desc: &'static str, print: bool) {
         if let Some(workspace_id) = self.workspaces.active_workspace(space) {
@@ -1970,19 +1977,28 @@ impl LayoutEngine {
                 let space = self.workspaces[effects.workspace_id].space;
                 self.debug_tree(space);
                 let wid = info.window_id;
-                self.window_layout_constraints.insert(
-                    wid,
-                    WindowLayoutConstraints {
-                        is_resizable: info.is_resizable,
-                        locked_width: info.current_size.width,
-                        locked_height: info.current_size.height,
-                        min_width: info.min_size.map_or(0.0, |s| s.width),
-                        min_height: info.min_size.map_or(0.0, |s| s.height),
-                        max_width: info.max_size.map_or(0.0, |s| s.width),
-                        max_height: info.max_size.map_or(0.0, |s| s.height),
-                    }
-                    .normalized(),
+                let constraints = WindowLayoutConstraints {
+                    is_resizable: info.is_resizable,
+                    locked_width: info.current_size.width,
+                    locked_height: info.current_size.height,
+                    min_width: info.min_size.map_or(0.0, |s| s.width),
+                    min_height: info.min_size.map_or(0.0, |s| s.height),
+                    max_width: info.max_size.map_or(0.0, |s| s.width),
+                    max_height: info.max_size.map_or(0.0, |s| s.height),
+                    // Unidentified fullscreen-sized processes (Wine game
+                    // windows) present borderless at the full screen frame.
+                    auto_fullscreen: info.bundle_id.is_none()
+                        && info.ax_subrole.as_deref() == Some("AXUnknown"),
+                }
+                .normalized();
+                debug!(
+                    ?wid,
+                    auto_fullscreen = constraints.auto_fullscreen,
+                    size = ?info.current_size,
+                    ?info.ax_subrole,
+                    "layout constraints set"
                 );
+                self.window_layout_constraints.insert(wid, constraints);
 
                 let target_workspace = effects.workspace_id;
                 let source_workspace = effects.source_workspace;
@@ -3357,9 +3373,13 @@ impl LayoutEngine {
         }
     }
 
-    pub fn workspaces(&self) -> &WorkspaceStore { &self.workspaces }
+    pub fn workspaces(&self) -> &WorkspaceStore {
+        &self.workspaces
+    }
 
-    pub fn workspaces_mut(&mut self) -> &mut WorkspaceStore { &mut self.workspaces }
+    pub fn workspaces_mut(&mut self) -> &mut WorkspaceStore {
+        &mut self.workspaces
+    }
 
     pub(crate) fn assign_window_with_app_info<'a>(
         &mut self,
@@ -3954,10 +3974,14 @@ mod tests {
                     .assign_window_to_workspace(&mut store, space, before[0], landing)
             );
             engine.note_eviction(&store, before[0], from);
-            let response = command(&mut engine, &mut store, LayoutCommand::MoveStackTab {
-                window: before[0].into(),
-                target: before[before.len() - 1].into(),
-            });
+            let response = command(
+                &mut engine,
+                &mut store,
+                LayoutCommand::MoveStackTab {
+                    window: before[0].into(),
+                    target: before[before.len() - 1].into(),
+                },
+            );
             assert!(response.changed, "{mode:?}");
             let mut expected = before.clone();
             expected.rotate_left(1);
@@ -3996,25 +4020,31 @@ mod tests {
         };
         for _ in 0..3 {
             assert_eq!(
-                command(&mut engine, &mut store, LayoutCommand::SwitchPresetColumnWidth {
-                    backwards: false
-                }),
+                command(
+                    &mut engine,
+                    &mut store,
+                    LayoutCommand::SwitchPresetColumnWidth { backwards: false }
+                ),
                 EventResponse {
                     changed: true,
                     ..Default::default()
                 }
             );
         }
-        let _ = command(&mut engine, &mut store, LayoutCommand::ScrollStrip {
-            delta: 0.8,
-        });
+        let _ = command(
+            &mut engine,
+            &mut store,
+            LayoutCommand::ScrollStrip { delta: 0.8 },
+        );
         let snap = command(&mut engine, &mut store, LayoutCommand::SnapStrip);
         assert_eq!(snap.focus_window, Some(WindowId::new(1, 3)));
         for boundary in [None, None, Some(Direction::Right)] {
             assert_eq!(
-                command(&mut engine, &mut store, LayoutCommand::ScrollStrip {
-                    delta: 0.2
-                })
+                command(
+                    &mut engine,
+                    &mut store,
+                    LayoutCommand::ScrollStrip { delta: 0.2 }
+                )
                 .boundary_hit,
                 boundary
             );
@@ -4027,9 +4057,11 @@ mod tests {
             LayoutMode::Traditional
         ));
         assert_eq!(
-            command(&mut engine, &mut store, LayoutCommand::SwitchPresetColumnWidth {
-                backwards: false
-            }),
+            command(
+                &mut engine,
+                &mut store,
+                LayoutCommand::SwitchPresetColumnWidth { backwards: false }
+            ),
             EventResponse::default()
         );
     }
@@ -4235,6 +4267,7 @@ mod tests {
         WindowLayoutInfo {
             window_id,
             title: None,
+            bundle_id: Some("com.test.app".into()),
             ax_role: None,
             ax_subrole: None,
             is_resizable: true,
@@ -4768,12 +4801,15 @@ mod tests {
         assert_eq!(frame.size.width, 234.0);
 
         let user_frame = CGRect::new(new_frame.origin, CGSize::new(400.0, new_frame.size.height));
-        let _ = engine.handle_event(&mut window_store, LayoutEvent::WindowResized {
-            wid: window,
-            old_frame: new_frame,
-            new_frame: user_frame,
-            screens: vec![(space, screen, None)].into(),
-        });
+        let _ = engine.handle_event(
+            &mut window_store,
+            LayoutEvent::WindowResized {
+                wid: window,
+                old_frame: new_frame,
+                new_frame: user_frame,
+                screens: vec![(space, screen, None)].into(),
+            },
+        );
         let frames =
             engine.calculate_layout(space, screen, &layout_settings.gaps, Default::default());
         let frame = frames.iter().find(|(wid, _)| *wid == window).unwrap().1;
@@ -5328,6 +5364,7 @@ mod tests {
                     WindowLayoutInfo {
                         window_id: locked,
                         title: None,
+                        bundle_id: Some("com.test.app".into()),
                         ax_role: None,
                         ax_subrole: None,
                         is_resizable: false,
@@ -5909,18 +5946,21 @@ mod tests {
         for wid in [a, b, a] {
             let _ = engine.handle_event(
                 &mut store,
-                LayoutEvent::WindowObserved(space, ResolvedWindow {
-                    info: window_layout_info(wid, focused.size),
-                    effects: AppRuleEffects {
-                        source_workspace: None,
-                        workspace_id: workspace,
-                        floating: true,
-                        position: None,
-                        size: None,
-                        focus: false,
-                        was_rule_floating: false,
+                LayoutEvent::WindowObserved(
+                    space,
+                    ResolvedWindow {
+                        info: window_layout_info(wid, focused.size),
+                        effects: AppRuleEffects {
+                            source_workspace: None,
+                            workspace_id: workspace,
+                            floating: true,
+                            position: None,
+                            size: None,
+                            focus: false,
+                            was_rule_floating: false,
+                        },
                     },
-                }),
+                ),
             );
             assert!(!engine.floating.is_floating(wid));
             assert!(engine.workspaces[workspace].layout_system.contains_window(layout, wid));

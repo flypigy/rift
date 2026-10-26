@@ -66,7 +66,9 @@ impl Column {
         proportional_width(view, gap, clamp_ratio(ratio, settings))
     }
 
-    fn selected(&self) -> Option<WindowId> { self.windows.get(self.active_window).copied() }
+    fn selected(&self) -> Option<WindowId> {
+        self.windows.get(self.active_window).copied()
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -178,7 +180,9 @@ impl CameraSpring {
         }
     }
 
-    pub(crate) fn current(&self) -> f64 { self.current }
+    pub(crate) fn current(&self) -> f64 {
+        self.current
+    }
 
     pub(crate) fn position_velocity(&self, now: Instant) -> (f64, f64) {
         let t = now.saturating_duration_since(self.started).as_secs_f64();
@@ -205,7 +209,9 @@ impl CameraSpring {
 }
 
 impl From<f64> for Viewport {
-    fn from(offset: f64) -> Self { Self::Static(if offset.is_finite() { offset } else { 0.0 }) }
+    fn from(offset: f64) -> Self {
+        Self::Static(if offset.is_finite() { offset } else { 0.0 })
+    }
 }
 
 /// Semantic release result; animation, when enabled, belongs to the viewport.
@@ -240,6 +246,9 @@ struct Geometry {
     frames: Vec<(WindowId, CGRect)>,
     bounds: (f64, f64),
     snaps: Vec<SnapPoint>,
+    /// Windows whose locked size already covers the whole screen (Wine game
+    /// windows and similar fullscreen-fixed surfaces).
+    fullscreen_sized: Vec<WindowId>,
 }
 
 /// Prepared world frames and temporary camera motion. Built only at semantic
@@ -268,11 +277,17 @@ pub(crate) struct PresentedViewport {
 }
 
 impl ViewportPresentation {
-    pub fn offset(&self) -> f64 { self.viewport.start_offset() }
+    pub fn offset(&self) -> f64 {
+        self.viewport.start_offset()
+    }
 
-    pub fn gesturing(&self) -> bool { matches!(self.viewport, Viewport::Gesture(_)) }
+    pub fn gesturing(&self) -> bool {
+        matches!(self.viewport, Viewport::Gesture(_))
+    }
 
-    pub fn animated(&self) -> bool { matches!(self.viewport, Viewport::Animation(_)) }
+    pub fn animated(&self) -> bool {
+        matches!(self.viewport, Viewport::Animation(_))
+    }
 
     pub fn finish(&mut self) {
         if !self.gesturing() {
@@ -366,7 +381,9 @@ fn proportional_width(view: f64, gap: f64, ratio: f64) -> f64 {
     ((view + gap) * ratio - gap).max(1.0)
 }
 
-fn width_ratio(view: f64, gap: f64, width: f64) -> f64 { (width + gap) / (view + gap).max(1.0) }
+fn width_ratio(view: f64, gap: f64, width: f64) -> f64 {
+    (width + gap) / (view + gap).max(1.0)
+}
 
 fn clamp_ratio(ratio: f64, settings: &ScrollingLayoutSettings) -> f64 {
     let min = settings.min_column_width_ratio.max(0.05);
@@ -403,6 +420,7 @@ impl Geometry {
         let tiling = compute_tiling_area(screen, &gaps);
         let mut columns = Vec::with_capacity(state.columns.len());
         let mut frames = Vec::with_capacity(state.columns.iter().map(|c| c.windows.len()).sum());
+        let mut fullscreen_sized = Vec::new();
         let constraint = |wid: &WindowId| {
             constraints
                 .get(wid)
@@ -484,6 +502,16 @@ impl Geometry {
                 if c.max_height > 0.0 {
                     size.height = size.height.min(c.max_height);
                 }
+                // The fixed (locked) size is compared against the screen before
+                // the tiling-area clamps above cap it to the column dimensions.
+                let natural_width = c.fixed_for_axis(true).unwrap_or(size.width);
+                let natural_height = c.fixed_for_axis(false).unwrap_or(size.height);
+                if c.auto_fullscreen
+                    && natural_width >= screen.size.width
+                    && natural_height >= screen.size.height
+                {
+                    fullscreen_sized.push(wid);
+                }
                 frames.push((wid, CGRect::new(CGPoint::new(x, y), size)));
                 y += height + gaps.inner.vertical;
             }
@@ -496,6 +524,7 @@ impl Geometry {
             constraints,
             columns,
             frames,
+            fullscreen_sized,
             bounds: (0.0, 0.0),
             snaps: Vec::new(),
         };
@@ -545,10 +574,13 @@ impl Geometry {
         let last = self.columns.last().unwrap();
         let left = first.world_x;
         let right = last.world_x + last.width - view;
-        let mut points = vec![SnapPoint { offset: left, column: 0 }, SnapPoint {
-            offset: right,
-            column: self.columns.len() - 1,
-        }];
+        let mut points = vec![
+            SnapPoint { offset: left, column: 0 },
+            SnapPoint {
+                offset: right,
+                column: self.columns.len() - 1,
+            },
+        ];
         for (index, column) in self.columns.iter().enumerate() {
             for offset in [column.world_x, column.world_x + column.width - view] {
                 if left < offset && offset < right {
@@ -564,17 +596,10 @@ impl Geometry {
         if column.width >= self.tiling.size.width {
             return column.world_x;
         }
-        // Preserve Rift's anchored first/last-column policy.
-        if self.columns.len() > 1 {
-            if index == 0 {
-                return column.world_x;
-            }
-            if index + 1 == self.columns.len() {
-                return column.world_x + column.width - self.tiling.size.width;
-            }
-        }
         match alignment {
             ScrollingAlignment::Left => column.world_x,
+            // Centered edge columns rest in empty space past the strip bounds;
+            // bounds derive from snap points, so they grow to include them.
             ScrollingAlignment::Center => centered_offset(self.tiling.size.width, column),
             ScrollingAlignment::Right => column.world_x + column.width - self.tiling.size.width,
         }
@@ -668,6 +693,9 @@ struct LayoutState {
     restored_view: Option<ViewBookmark>,
     fullscreen: HashSet<WindowId>,
     fullscreen_within_gaps: HashSet<WindowId>,
+    /// Fullscreen-sized windows already auto-promoted; never re-promoted after
+    /// the user toggles them back.
+    auto_fullscreen_seen: HashSet<WindowId>,
 }
 
 // Store the camera relative to its active column as well as its absolute
@@ -782,6 +810,7 @@ impl From<StoredLayoutState> for LayoutState {
             restored_view: stored.view_anchor,
             fullscreen: stored.fullscreen,
             fullscreen_within_gaps: stored.fullscreen_within_gaps,
+            auto_fullscreen_seen: HashSet::default(),
         };
         if let Some(window) = stored.selected {
             state.activate(window);
@@ -791,7 +820,9 @@ impl From<StoredLayoutState> for LayoutState {
 }
 
 impl LayoutState {
-    fn selected(&self) -> Option<WindowId> { self.columns.get(self.active_column)?.selected() }
+    fn selected(&self) -> Option<WindowId> {
+        self.columns.get(self.active_column)?.selected()
+    }
 
     fn selected_location(&self) -> Option<(usize, usize)> {
         self.columns
@@ -865,6 +896,14 @@ impl LayoutState {
             constraints.clone(),
             gaps.clone(),
         ));
+        if let Some(g) = self.geometry.as_ref() {
+            tracing::debug!(fullscreen_sized = ?g.fullscreen_sized, "scrolling geometry rebuild");
+            for wid in &g.fullscreen_sized {
+                if self.auto_fullscreen_seen.insert(*wid) {
+                    self.fullscreen.insert(*wid);
+                }
+            }
+        }
         if let Some(bookmark) = bookmark
             && let Some(column) = self.geometry.as_ref().unwrap().column(bookmark.column)
         {
@@ -968,6 +1007,13 @@ impl LayoutState {
                 old.constraints,
                 old.gaps,
             ));
+            if let Some(g) = self.geometry.as_ref() {
+                for wid in &g.fullscreen_sized {
+                    if self.auto_fullscreen_seen.insert(*wid) {
+                        self.fullscreen.insert(*wid);
+                    }
+                }
+            }
             let anchor = window
                 .and_then(|wid| self.locate(wid))
                 .map(|(col, _)| self.columns[col].id)
@@ -989,13 +1035,16 @@ impl LayoutState {
         self.next_column_id = self.next_column_id.max(2);
         let id = ColumnId(self.next_column_id);
         self.next_column_id += 2; // Even container IDs never collide with odd window IDs.
-        self.columns.insert(index.min(self.columns.len()), Column {
-            id,
-            windows: vec![wid],
-            active_window: 0,
-            width,
-            height_weights: vec![weight],
-        });
+        self.columns.insert(
+            index.min(self.columns.len()),
+            Column {
+                id,
+                windows: vec![wid],
+                active_window: 0,
+                width,
+                height_weights: vec![weight],
+            },
+        );
         self.activate(wid);
     }
 
@@ -1191,7 +1240,8 @@ impl ScrollingLayoutSystem {
             frame = translate_frame(frame, offset, g.tiling, g.screen, park);
             frame = frame.round();
             if state.fullscreen.contains(&wid) {
-                frame = g.screen;
+                let focused = !park && state.selected() == Some(wid);
+                frame = Self::fullscreen_frame(state, g, wid, park, focused, Some(frame.origin.x));
             } else if state.fullscreen_within_gaps.contains(&wid) {
                 frame = g.tiling;
             }
@@ -1220,7 +1270,12 @@ impl ScrollingLayoutSystem {
             .iter()
             .map(|&(wid, frame)| {
                 if state.fullscreen.contains(&wid) {
-                    (wid, g.screen, true)
+                    let fixed = state.selected() == Some(wid);
+                    (
+                        wid,
+                        Self::fullscreen_frame(state, g, wid, false, fixed, Some(frame.origin.x)),
+                        fixed,
+                    )
                 } else if state.fullscreen_within_gaps.contains(&wid) {
                     (wid, g.tiling, true)
                 } else {
@@ -1229,6 +1284,41 @@ impl ScrollingLayoutSystem {
             })
             .collect();
         Some((camera, frames))
+    }
+
+    /// Fullscreen-presented windows show at their own locked size — verbatim,
+    /// so Wine and similar toolkits never see a "resize" and re-draw
+    /// decorations. The focused one pins to the display's top-left (covering
+    /// menu bar and dock); the rest slide with the camera like any column.
+    ///
+    /// The y=0 top-left assumes the display's top edge sits at the global
+    /// origin (single/main display).
+    fn fullscreen_frame(
+        state: &LayoutState,
+        g: &Geometry,
+        wid: WindowId,
+        park: bool,
+        focused: bool,
+        translated_x: Option<f64>,
+    ) -> CGRect {
+        let size = g
+            .constraints
+            .get(&wid)
+            .map(|c| {
+                CGSize::new(
+                    c.locked_width.max(g.screen.size.width),
+                    c.locked_height.max(g.screen.size.height),
+                )
+            })
+            .unwrap_or(g.screen.size);
+        if park {
+            return CGRect::new(CGPoint::new(g.screen.max().x + 1.0, g.screen.origin.y), size);
+        }
+        if focused {
+            return CGRect::new(CGPoint::new(g.screen.origin.x, 0.0), size);
+        }
+        let x = translated_x.unwrap_or_else(|| g.screen.max().x + 1.0);
+        CGRect::new(CGPoint::new(x, 0.0), size)
     }
 
     pub(crate) fn commit_presented_viewport(&mut self, layout: LayoutId, p: &PresentedViewport) {
@@ -1540,9 +1630,13 @@ impl ScrollingLayoutSystem {
 }
 
 impl LayoutSystem for ScrollingLayoutSystem {
-    fn create_layout(&mut self) -> LayoutId { self.layouts.insert(LayoutState::default()) }
+    fn create_layout(&mut self) -> LayoutId {
+        self.layouts.insert(LayoutState::default())
+    }
 
-    fn contains_layout(&self, layout: LayoutId) -> bool { self.layouts.contains_key(layout) }
+    fn contains_layout(&self, layout: LayoutId) -> bool {
+        self.layouts.contains_key(layout)
+    }
 
     fn clone_layout(&mut self, layout: LayoutId) -> LayoutId {
         let mut state = self.layouts.get(layout).cloned().unwrap_or_default();
@@ -1557,7 +1651,9 @@ impl LayoutSystem for ScrollingLayoutSystem {
         self.layouts.insert(state)
     }
 
-    fn remove_layout(&mut self, layout: LayoutId) { self.layouts.remove(layout); }
+    fn remove_layout(&mut self, layout: LayoutId) {
+        self.layouts.remove(layout);
+    }
 
     fn draw_tree(&self, layout: LayoutId) -> String {
         let Some(state) = self.layouts.get(layout) else {
@@ -2128,7 +2224,9 @@ pub(crate) mod tests {
     use super::*;
     use crate::common::config::{ScrollingWidthOverride, StackDefaultOrientation};
 
-    fn wid(index: u32) -> WindowId { WindowId::new(1, index) }
+    fn wid(index: u32) -> WindowId {
+        WindowId::new(1, index)
+    }
 
     struct Fixture {
         system: ScrollingLayoutSystem,
@@ -2190,7 +2288,9 @@ pub(crate) mod tests {
             assert!(self.system.select_window(self.layout, wid(index)));
         }
 
-        fn selected(&self) -> Option<WindowId> { self.system.selected_window(self.layout) }
+        fn selected(&self) -> Option<WindowId> {
+            self.system.selected_window(self.layout)
+        }
 
         fn focus(&mut self, direction: Direction) -> Option<WindowId> {
             self.system.move_focus(self.layout, direction).0
@@ -2274,11 +2374,14 @@ pub(crate) mod tests {
     #[test]
     fn semantic_presets_advance_despite_constrained_geometry() {
         let mut f = Fixture::new(1);
-        f.constraints.insert(wid(1), WindowLayoutConstraints {
-            is_resizable: true,
-            max_width: 450.0,
-            ..Default::default()
-        });
+        f.constraints.insert(
+            wid(1),
+            WindowLayoutConstraints {
+                is_resizable: true,
+                max_width: 450.0,
+                ..Default::default()
+            },
+        );
         f.system.resize_selection_by(f.layout, -0.08, ResizeOrientation::Horizontal);
         f.prepare();
         for ratio in [0.5, 2.0 / 3.0] {
@@ -2656,27 +2759,43 @@ pub(crate) mod tests {
     fn width_height_and_axis_specific_constraints_remain_independent() {
         // Primary owner for the previous separate min/max/fixed-axis regressions.
         for (width, height, constraints) in [
-            (500.0, 800.0, WindowLayoutConstraints {
-                is_resizable: true,
-                min_width: 500.0,
-                min_height: 350.0,
-                ..Default::default()
-            }),
-            (300.0, 800.0, WindowLayoutConstraints {
-                is_resizable: true,
-                max_width: 300.0,
-                ..Default::default()
-            }),
-            (1400.0, 400.0, WindowLayoutConstraints {
-                locked_width: 1400.0,
-                locked_height: 400.0,
-                ..Default::default()
-            }),
-            (1400.0, 800.0, WindowLayoutConstraints {
-                is_resizable: true,
-                min_width: 1400.0,
-                ..Default::default()
-            }),
+            (
+                500.0,
+                800.0,
+                WindowLayoutConstraints {
+                    is_resizable: true,
+                    min_width: 500.0,
+                    min_height: 350.0,
+                    ..Default::default()
+                },
+            ),
+            (
+                300.0,
+                800.0,
+                WindowLayoutConstraints {
+                    is_resizable: true,
+                    max_width: 300.0,
+                    ..Default::default()
+                },
+            ),
+            (
+                1400.0,
+                400.0,
+                WindowLayoutConstraints {
+                    locked_width: 1400.0,
+                    locked_height: 400.0,
+                    ..Default::default()
+                },
+            ),
+            (
+                1400.0,
+                800.0,
+                WindowLayoutConstraints {
+                    is_resizable: true,
+                    min_width: 1400.0,
+                    ..Default::default()
+                },
+            ),
         ] {
             let mut f = Fixture::new(1);
             f.constraints.insert(wid(1), constraints);
@@ -2684,28 +2803,37 @@ pub(crate) mod tests {
         }
         let mut f = Fixture::new(2);
         f.drop(2, 1, WindowDropAction::Stack);
-        f.constraints.insert(wid(1), WindowLayoutConstraints {
-            locked_width: 700.0,
-            locked_height: 400.0,
-            min_width: 700.0,
-            max_width: 700.0,
-            ..Default::default()
-        });
-        f.constraints.insert(wid(2), WindowLayoutConstraints {
-            is_resizable: true,
-            max_width: 500.0,
-            min_height: 350.0,
-            ..Default::default()
-        });
+        f.constraints.insert(
+            wid(1),
+            WindowLayoutConstraints {
+                locked_width: 700.0,
+                locked_height: 400.0,
+                min_width: 700.0,
+                max_width: 700.0,
+                ..Default::default()
+            },
+        );
+        f.constraints.insert(
+            wid(2),
+            WindowLayoutConstraints {
+                is_resizable: true,
+                max_width: 500.0,
+                min_height: 350.0,
+                ..Default::default()
+            },
+        );
         assert_eq!(f.frame(1).size, CGSize::new(700.0, 400.0));
         assert_eq!(f.frame(2).size, CGSize::new(500.0, 400.0));
 
         let mut f = Fixture::new(2);
-        f.constraints.insert(wid(1), WindowLayoutConstraints {
-            locked_width: 350.0,
-            is_resizable: false,
-            ..Default::default()
-        });
+        f.constraints.insert(
+            wid(1),
+            WindowLayoutConstraints {
+                locked_width: 350.0,
+                is_resizable: false,
+                ..Default::default()
+            },
+        );
         let before = f.frames();
         assert_eq!(f.frame(2).origin.x, 350.0);
         f.focus(Direction::Right);
@@ -2717,17 +2845,23 @@ pub(crate) mod tests {
         let mut f = Fixture::new(2);
         let mut settings = f.system.settings.clone();
         settings.preserve_window_sizes = true;
-        settings.per_display.insert("display".into(), ScrollingWidthOverride {
-            column_width_ratio: Some(0.6),
-            min_column_width_ratio: Some(0.3),
-            max_column_width_ratio: Some(0.7),
-        });
+        settings.per_display.insert(
+            "display".into(),
+            ScrollingWidthOverride {
+                column_width_ratio: Some(0.6),
+                min_column_width_ratio: Some(0.3),
+                max_column_width_ratio: Some(0.7),
+            },
+        );
         f.system.update_settings(&settings);
-        f.constraints.insert(wid(1), WindowLayoutConstraints {
-            is_resizable: true,
-            locked_width: 400.0,
-            ..Default::default()
-        });
+        f.constraints.insert(
+            wid(1),
+            WindowLayoutConstraints {
+                is_resizable: true,
+                locked_width: 400.0,
+                ..Default::default()
+            },
+        );
         assert_eq!(f.frame(1).size.width, 400.0);
         f.system.update_width_settings(settings.widths_for_display(Some("display")));
         assert_eq!(f.frame(1).size.width, 400.0);
@@ -2756,20 +2890,50 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn fullscreen_sized_unidentified_windows_present_fullscreen() {
+        let mut f = Fixture::new(1);
+        let window = wid(1);
+        f.constraints.insert(
+            window,
+            WindowLayoutConstraints {
+                is_resizable: false,
+                locked_width: 1000.0,
+                locked_height: 800.0,
+                auto_fullscreen: true,
+                ..Default::default()
+            },
+        );
+        f.prepare();
+
+        let presentation = f.system.presentation(f.layout).unwrap();
+        let frame = presentation
+            .1
+            .into_iter()
+            .find(|(w, _, _)| *w == window)
+            .map(|(_, frame, _)| frame)
+            .expect("fullscreen-sized window should present");
+        assert_eq!(
+            frame,
+            CGRect::new(CGPoint::ZERO, CGSize::new(1000.0, 800.0)),
+            "fullscreen-sized unidentified windows must present at the screen frame"
+        );
+    }
+
+    #[test]
     fn anchored_alignments_and_single_column_placement_remain_supported() {
-        for (alignment, middle, single) in [
-            (ScrollingAlignment::Left, 0.0, 0.0),
-            (ScrollingAlignment::Center, 250.0, 250.0),
-            (ScrollingAlignment::Right, 500.0, 500.0),
+        for (alignment, aligned) in [
+            (ScrollingAlignment::Left, 0.0),
+            (ScrollingAlignment::Center, 250.0),
+            (ScrollingAlignment::Right, 500.0),
         ] {
             let mut f = Fixture::new(3);
             let mut settings = f.system.settings.clone();
             settings.alignment = alignment;
             settings.focus_navigation_style = ScrollingFocusNavigationStyle::Anchored;
             f.system.update_settings(&settings);
-            for (index, x) in [(2, middle), (3, 500.0), (1, 0.0)] {
+            for index in [2, 3, 1] {
                 f.select(index);
-                assert_eq!(f.frame(index).origin.x, x);
+                assert_eq!(f.frame(index).origin.x, aligned, "alignment={alignment:?}");
                 f.system.begin_viewport_gesture(f.layout, Instant::now());
                 f.system.update_viewport_gesture(f.layout, 20.0, Duration::from_millis(10));
                 let release = f
@@ -2777,7 +2941,7 @@ pub(crate) mod tests {
                     .end_viewport_gesture(f.layout, Duration::from_millis(210), false)
                     .unwrap();
                 assert_eq!(release.window, wid(index), "alignment={alignment:?}");
-                assert_eq!(f.frame(index).origin.x, x);
+                assert_eq!(f.frame(index).origin.x, aligned);
             }
             let mut system = ScrollingLayoutSystem::new(&settings);
             let layout = system.create_layout();
@@ -2785,7 +2949,7 @@ pub(crate) mod tests {
             system.prepare_layout(layout, f.screen, &f.constraints, &f.gaps);
             assert_eq!(
                 presented_frames(&system, layout).next().unwrap().1.origin.x,
-                single
+                aligned
             );
         }
     }
@@ -2911,10 +3075,13 @@ pub(crate) mod tests {
         ] {
             let mut f = Fixture::new(3);
             for (i, width) in widths.into_iter().enumerate() {
-                f.constraints.insert(wid(i as u32 + 1), WindowLayoutConstraints {
-                    locked_width: width,
-                    ..Default::default()
-                });
+                f.constraints.insert(
+                    wid(i as u32 + 1),
+                    WindowLayoutConstraints {
+                        locked_width: width,
+                        ..Default::default()
+                    },
+                );
             }
             f.prepare();
             assert!(f.system.begin_viewport_gesture(f.layout, Instant::now()));
@@ -3014,11 +3181,10 @@ pub(crate) mod tests {
         f.system
             .unstack_parent_of_selection(f.layout, StackDefaultOrientation::Vertical);
         assert_eq!(f.frame(2).origin.x, x);
-        assert_eq!(f.system.all_windows_in_layout(f.layout), vec![
-            wid(2),
-            wid(1),
-            wid(3)
-        ]);
+        assert_eq!(
+            f.system.all_windows_in_layout(f.layout),
+            vec![wid(2), wid(1), wid(3)]
+        );
     }
 
     #[test]

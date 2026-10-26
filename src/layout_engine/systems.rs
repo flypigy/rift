@@ -17,6 +17,9 @@ pub struct WindowLayoutConstraints {
     pub min_height: f64,
     pub max_width: f64,
     pub max_height: f64,
+    /// Unidentified fullscreen-sized process (Wine loader): the window should
+    /// be presented at the full screen frame inside the strip.
+    pub auto_fullscreen: bool,
 }
 
 impl WindowLayoutConstraints {
@@ -40,6 +43,7 @@ impl WindowLayoutConstraints {
             min_height,
             max_width,
             max_height,
+            auto_fullscreen: self.auto_fullscreen,
         }
     }
 
@@ -177,7 +181,9 @@ pub trait LayoutSystem: Serialize + for<'de> Deserialize<'de> {
     }
     fn visible_windows_in_layout(&self, layout: LayoutId) -> Vec<WindowId>;
     /// Members sharing the stack/group that directly contains `window`.
-    fn stack_members(&self, _layout: LayoutId, _window: WindowId) -> Vec<WindowId> { Vec::new() }
+    fn stack_members(&self, _layout: LayoutId, _window: WindowId) -> Vec<WindowId> {
+        Vec::new()
+    }
     fn visible_windows_under_selection(&self, layout: LayoutId) -> Vec<WindowId>;
     fn ascend_selection(&mut self, layout: LayoutId) -> bool;
     fn descend_selection(&mut self, layout: LayoutId) -> bool;
@@ -200,7 +206,9 @@ pub trait LayoutSystem: Serialize + for<'de> Deserialize<'de> {
     /// Replace a window identity in-place without changing its layout position.
     fn replace_window(&mut self, from: WindowId, to: WindowId);
     fn remove_window(&mut self, wid: WindowId);
-    fn remove_window_and_rebalance_parent(&mut self, wid: WindowId) { self.remove_window(wid) }
+    fn remove_window_and_rebalance_parent(&mut self, wid: WindowId) {
+        self.remove_window(wid)
+    }
     fn remove_windows_for_app(&mut self, pid: pid_t);
     fn windows_for_app(&self, layout: LayoutId, pid: pid_t) -> Vec<WindowId> {
         self.all_windows_in_layout(layout)
@@ -294,7 +302,9 @@ pub trait LayoutSystem: Serialize + for<'de> Deserialize<'de> {
     ) -> Vec<WindowId> {
         Vec::new()
     }
-    fn parent_of_selection_is_stacked(&self, _layout: LayoutId) -> bool { false }
+    fn parent_of_selection_is_stacked(&self, _layout: LayoutId) -> bool {
+        false
+    }
     fn unjoin_selection(&mut self, _layout: LayoutId) {}
     fn resize_selection_by(
         &mut self,
@@ -423,7 +433,9 @@ mod tests {
     use crate::actor::app::WindowId;
     use crate::common::config::{ScrollingLayoutSettings, WindowInsertionPoint};
 
-    fn w(idx: u32) -> WindowId { WindowId::new(1, idx) }
+    fn w(idx: u32) -> WindowId {
+        WindowId::new(1, idx)
+    }
 
     #[test]
     fn app_membership_reconciliation_is_representation_neutral() {
@@ -440,11 +452,10 @@ mod tests {
         traditional.add_window_after_selection(traditional_layout, w(2));
         traditional.select_window(traditional_layout, w(1));
         traditional.add_window_after_selection(traditional_layout, w(3));
-        assert_eq!(traditional.all_windows_in_layout(traditional_layout), vec![
-            w(1),
-            w(2),
-            w(3)
-        ]);
+        assert_eq!(
+            traditional.all_windows_in_layout(traditional_layout),
+            vec![w(1), w(2), w(3)]
+        );
 
         let mut scrolling_settings = ScrollingLayoutSettings::default();
         scrolling_settings.base.window_insertion_point = Some(WindowInsertionPoint::EndOfTree);
@@ -454,11 +465,10 @@ mod tests {
         scrolling.add_window_after_selection(scrolling_layout, w(2));
         scrolling.select_window(scrolling_layout, w(1));
         scrolling.add_window_after_selection(scrolling_layout, w(3));
-        assert_eq!(scrolling.all_windows_in_layout(scrolling_layout), vec![
-            w(1),
-            w(2),
-            w(3)
-        ]);
+        assert_eq!(
+            scrolling.all_windows_in_layout(scrolling_layout),
+            vec![w(1), w(2), w(3)]
+        );
     }
 
     #[test]
@@ -471,6 +481,7 @@ mod tests {
             min_height: 470.0,
             max_width: 723.0,
             max_height: 0.0,
+            auto_fullscreen: false,
         }
         .normalized();
 
@@ -491,6 +502,7 @@ mod tests {
             min_height: 0.0,
             max_width: 0.0,
             max_height: 0.0,
+            auto_fullscreen: false,
         }
         .normalized();
 
@@ -510,6 +522,7 @@ mod tests {
             min_height: 0.0,
             max_width: 0.0,
             max_height: 0.0,
+            auto_fullscreen: false,
         }
         .normalized();
 
@@ -530,6 +543,7 @@ mod tests {
             min_height: 0.0,
             max_width: 600.0,
             max_height: 480.0,
+            auto_fullscreen: false,
         }
         .normalized();
 
