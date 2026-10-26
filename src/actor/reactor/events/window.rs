@@ -152,7 +152,13 @@ pub fn handle_window_deminiaturized(
 
     // Minimized AX snapshots can have stale admission metadata. Refresh them
     // even when the cached snapshot cannot currently be admitted.
-    let mut outcome = EventOutcome::no_change().with_window_inventory_request(wid.pid);
+    // The window re-enters the managed set (minimize removed it from the
+    // layout tree), so the arrange pass that places the re-projected window
+    // must run — restoring with arrange passes at zero leaves the window at
+    // its stale pre-minimize frame, overlapping the layout until focused.
+    let mut outcome = EventOutcome::window_membership_changed(false, false)
+        .with_window_inventory_request(wid.pid)
+        .with_arrange_space_scope(active_space);
     if active_space.is_some() {
         // Minimizing clears workspace membership; reconcile app rules before
         // projecting the restored window, just as for a newly created window.
