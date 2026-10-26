@@ -26,7 +26,9 @@ pub struct FloatingLayoutSystem {
     spread_on_initialization: bool,
 }
 impl Default for FloatingLayoutSystem {
-    fn default() -> Self { Self::new(WindowInsertionPoint::default()) }
+    fn default() -> Self {
+        Self::new(WindowInsertionPoint::default())
+    }
 }
 
 impl FloatingLayoutSystem {
@@ -243,7 +245,9 @@ impl FloatingLayoutSystem {
         )
     }
 
-    pub(crate) fn spread_initial_windows(&mut self) { self.spread_on_initialization = true; }
+    pub(crate) fn spread_initial_windows(&mut self) {
+        self.spread_on_initialization = true;
+    }
 
     fn cascade_frame(frame: CGRect, screen: CGRect, index: usize, count: usize) -> CGRect {
         if count <= 1 {
@@ -319,7 +323,9 @@ impl FloatingLayoutSystem {
         self.spread_on_initialization = false;
     }
 
-    pub fn frame(&self, wid: WindowId) -> Option<CGRect> { self.frames.get(&wid).copied() }
+    pub fn frame(&self, wid: WindowId) -> Option<CGRect> {
+        self.frames.get(&wid).copied()
+    }
 
     pub fn store_frame(&mut self, wid: WindowId, frame: CGRect) {
         let layouts = self.inner.layouts_for_window(wid);
@@ -363,9 +369,13 @@ impl FloatingLayoutSystem {
 impl LayoutSystem for FloatingLayoutSystem {
     delegate_traditional_layout_system!(@tree);
 
-    fn create_layout(&mut self) -> LayoutId { self.inner.create_layout() }
+    fn create_layout(&mut self) -> LayoutId {
+        self.inner.create_layout()
+    }
 
-    fn clone_layout(&mut self, layout: LayoutId) -> LayoutId { self.inner.clone_layout(layout) }
+    fn clone_layout(&mut self, layout: LayoutId) -> LayoutId {
+        self.inner.clone_layout(layout)
+    }
 
     fn remove_layout(&mut self, layout: LayoutId) {
         let windows = self.inner.all_windows_in_layout(layout);
@@ -378,7 +388,9 @@ impl LayoutSystem for FloatingLayoutSystem {
         }
     }
 
-    fn draw_tree(&self, layout: LayoutId) -> String { self.inner.draw_tree(layout) }
+    fn draw_tree(&self, layout: LayoutId) -> String {
+        self.inner.draw_tree(layout)
+    }
 
     fn container_tree(&self, layout: LayoutId) -> rift_protocol::ContainerTreeNode {
         self.inner.container_tree(layout)
@@ -516,7 +528,9 @@ impl LayoutSystem for FloatingLayoutSystem {
         self.store_frame(wid, new_frame);
     }
 
-    fn move_selection(&mut self, _layout: LayoutId, _direction: Direction) -> bool { false }
+    fn move_selection(&mut self, _layout: LayoutId, _direction: Direction) -> bool {
+        false
+    }
 
     fn move_selection_to_layout_after_selection(
         &mut self,
@@ -669,8 +683,12 @@ mod tests {
     use super::*;
     use crate::sys::geometry::CGRectExt;
 
-    fn w(index: u32) -> WindowId { WindowId::new(1, index) }
-    fn rect(x: f64, y: f64) -> CGRect { CGRect::new(CGPoint::new(x, y), CGSize::new(200., 150.)) }
+    fn w(index: u32) -> WindowId {
+        WindowId::new(1, index)
+    }
+    fn rect(x: f64, y: f64) -> CGRect {
+        CGRect::new(CGPoint::new(x, y), CGSize::new(200., 150.))
+    }
     fn fixture() -> (FloatingLayoutSystem, LayoutId) {
         let mut system = FloatingLayoutSystem::default();
         let layout = system.create_layout();

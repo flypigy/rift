@@ -146,7 +146,9 @@ impl State {
 struct WakerImpl(WakeLatch, WakeupHandle);
 
 impl Wake for WakerImpl {
-    fn wake(self: Arc<Self>) { self.wake_by_ref(); }
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
 
     fn wake_by_ref(self: &Arc<Self>) {
         if self.0.request() {
@@ -200,7 +202,9 @@ mod tests {
     fn executor_drops_main_task_on_unwind() {
         struct SignallingDrop(AssertUnwindSafe<Rc<Cell<bool>>>);
         impl Drop for SignallingDrop {
-            fn drop(&mut self) { self.0.replace(true); }
+            fn drop(&mut self) {
+                self.0.replace(true);
+            }
         }
 
         let dropped = Rc::new(Cell::new(false));

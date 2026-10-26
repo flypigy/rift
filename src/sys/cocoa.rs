@@ -51,7 +51,9 @@ impl EventLoopWaker {
         }
     }
 
-    fn request_wake(&self) -> bool { self.pending.request() }
+    fn request_wake(&self) -> bool {
+        self.pending.request()
+    }
 
     fn post_wake(&self) {
         #[cfg(debug_assertions)]
@@ -83,7 +85,9 @@ impl EventLoopWaker {
         .expect("unable to create Rift's Cocoa wake event")
     }
 
-    fn consume_wake(&self) { self.pending.consume(); }
+    fn consume_wake(&self) {
+        self.pending.consume();
+    }
 
     fn is_rift_wake(event: &NSEvent) -> bool {
         event.r#type() == NSEventType::ApplicationDefined
@@ -93,9 +97,13 @@ impl EventLoopWaker {
 }
 
 impl Wake for EventLoopWaker {
-    fn wake(self: Arc<Self>) { self.post_wake(); }
+    fn wake(self: Arc<Self>) {
+        self.post_wake();
+    }
 
-    fn wake_by_ref(self: &Arc<Self>) { self.post_wake(); }
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.post_wake();
+    }
 }
 
 pub(super) struct EventLoop {
@@ -116,7 +124,9 @@ impl EventLoop {
         }
     }
 
-    pub fn waker(&self) -> Arc<EventLoopWaker> { self.waker.clone() }
+    pub fn waker(&self) -> Arc<EventLoopWaker> {
+        self.waker.clone()
+    }
 
     pub fn wait(&self) {
         #[cfg(debug_assertions)]

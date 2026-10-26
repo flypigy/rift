@@ -252,12 +252,15 @@ impl BspLayoutSystem {
 
     fn make_leaf(&mut self, window: Option<WindowId>) -> NodeId {
         let id = self.tree.mk_node().into_id();
-        self.kind.insert(id, NodeKind::Leaf {
-            window,
-            fullscreen: false,
-            fullscreen_within_gaps: false,
-            preselected: None,
-        });
+        self.kind.insert(
+            id,
+            NodeKind::Leaf {
+                window,
+                fullscreen: false,
+                fullscreen_within_gaps: false,
+                preselected: None,
+            },
+        );
         id
     }
 
@@ -768,7 +771,9 @@ impl crate::model::tree::Observer for Components {
 mod tests {
     use super::*;
 
-    fn w(idx: u32) -> WindowId { WindowId::new(1, idx) }
+    fn w(idx: u32) -> WindowId {
+        WindowId::new(1, idx)
+    }
 
     fn tiled(windows: &[u32]) -> (BspLayoutSystem, LayoutId) {
         let mut system = BspLayoutSystem::default();
@@ -1373,7 +1378,9 @@ impl LayoutSystem for BspLayoutSystem {
         self.layouts.insert(state)
     }
 
-    fn contains_layout(&self, layout: LayoutId) -> bool { self.layouts.contains_key(layout) }
+    fn contains_layout(&self, layout: LayoutId) -> bool {
+        self.layouts.contains_key(layout)
+    }
 
     /// shallow
     fn clone_layout(&mut self, layout: LayoutId) -> LayoutId {
@@ -1950,10 +1957,13 @@ impl LayoutSystem for BspLayoutSystem {
             // onto a new split at the directional neighbor, then reclaim its
             // old region for the sibling left behind.
             let split = self.tree.mk_node().into_id();
-            self.kind.insert(split, NodeKind::Split {
-                orientation: direction.orientation(),
-                ratio: 0.5,
-            });
+            self.kind.insert(
+                split,
+                NodeKind::Split {
+                    orientation: direction.orientation(),
+                    ratio: 0.5,
+                },
+            );
             split.detach(&mut self.tree).insert_before(target);
             let (first, second) = match direction {
                 Direction::Left | Direction::Up => (moving, target),

@@ -111,7 +111,9 @@ impl Rig {
         result
     }
 
-    fn event(&mut self, event: Event) { self.actor.handle_event(event); }
+    fn event(&mut self, event: Event) {
+        self.actor.handle_event(event);
+    }
 
     fn notifications(&mut self) -> Vec<reactor::Event> {
         std::iter::from_fn(|| self.events.try_recv().ok().map(|(_, event)| event)).collect()
@@ -204,9 +206,10 @@ fn every_physical_reconfiguration_revokes_authority_but_begin_only_does_not() {
 fn sleep_lock_and_overlapping_holds_require_a_fresh_settled_sample_after_every_release() {
     for (holds, releases) in [
         (vec![Event::SystemWillSleep], vec![Event::SystemDidWake]),
-        (vec![Event::SessionDidResignActive], vec![
-            Event::SessionDidBecomeActive,
-        ]),
+        (
+            vec![Event::SessionDidResignActive],
+            vec![Event::SessionDidBecomeActive],
+        ),
         (
             vec![Event::SystemWillSleep, Event::SessionDidResignActive],
             vec![Event::SystemDidWake, Event::SessionDidBecomeActive],
@@ -597,10 +600,10 @@ fn partial_return_does_not_steal_an_absent_displays_desktop_history() {
     );
     let returned = sample(vec![screen(1, "builtin", 1), screen(2, "external", 4)]);
     assert!(rig.tick(0, Some(returned.clone())).is_none());
-    assert_eq!(rig.tick(1, Some(returned)).unwrap().space_remaps, vec![(
-        SpaceId::new(2),
-        SpaceId::new(4)
-    )]);
+    assert_eq!(
+        rig.tick(1, Some(returned)).unwrap().space_remaps,
+        vec![(SpaceId::new(2), SpaceId::new(4))]
+    );
 }
 
 #[test]
@@ -692,10 +695,10 @@ fn borrowing_a_fullscreen_displays_desktop_needs_physical_evidence_or_persistenc
                 assert_eq!(rig.actor.state.screens, accepted.screens, "{case}");
             } else {
                 let moved = forwarded.expect(case);
-                assert_eq!(moved.display_space_ids["left"], vec![
-                    SpaceId::new(1),
-                    SpaceId::new(2)
-                ]);
+                assert_eq!(
+                    moved.display_space_ids["left"],
+                    vec![SpaceId::new(1), SpaceId::new(2)]
+                );
             }
         }
         if case == "transient" {
@@ -891,9 +894,10 @@ fn queued_active_space_notification_waits_for_a_real_switch_or_bounded_membershi
         let before = rig.tick(0, Some(base.clone())).unwrap();
         rig.event(Event::ScreenRefreshRequested);
         rig.event(Event::ActiveSpaceChanged);
-        assert!(matches!(rig.notifications().as_slice(), [
-            reactor::Event::TopologyInvalidated(_)
-        ]));
+        assert!(matches!(
+            rig.notifications().as_slice(),
+            [reactor::Event::TopologyInvalidated(_)]
+        ));
         rig.membership(1, &[]);
         rig.membership(2, &[7]);
         for attempt in 0..REFRESH_MAX_RETRIES {

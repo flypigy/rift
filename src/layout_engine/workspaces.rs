@@ -77,7 +77,9 @@ impl From<CGSize> for Size {
 }
 
 impl WorkspaceLayoutState {
-    pub(crate) fn active(&self) -> Option<LayoutId> { self.layout }
+    pub(crate) fn active(&self) -> Option<LayoutId> {
+        self.layout
+    }
 
     pub(crate) fn active_size(&self) -> Option<CGSize> {
         self.layout

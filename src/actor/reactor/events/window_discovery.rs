@@ -49,12 +49,10 @@ fn sync_existing_window_state(
     let mut admission_changed = false;
     let mut outcome = match (was_minimized, is_minimized) {
         (_, true) => window::handle_window_minimized(state, wid)?,
-        (true, false) => {
-            window::handle_window_deminiaturized(state, window::WindowDeminiaturizedPayload {
-                window: wid,
-                active_space,
-            })?
-        }
+        (true, false) => window::handle_window_deminiaturized(
+            state,
+            window::WindowDeminiaturizedPayload { window: wid, active_space },
+        )?,
         _ => {
             let is_admitted = utils::refresh_heuristic(state, wid)
                 .is_some_and(|transition| transition.is_admitted);
@@ -304,11 +302,13 @@ pub(crate) fn emit_layout_events(
                 continue;
             };
             if active_spaces.contains(&space) {
-                outcome =
-                    outcome.with_layout_event(LayoutEvent::WindowObserved(space, ResolvedWindow {
+                outcome = outcome.with_layout_event(LayoutEvent::WindowObserved(
+                    space,
+                    ResolvedWindow {
                         info: window.layout_info(wid),
                         effects,
-                    }));
+                    },
+                ));
             }
         }
     }

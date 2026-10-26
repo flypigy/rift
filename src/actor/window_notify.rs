@@ -22,7 +22,9 @@ pub struct Ignored {
 }
 
 impl Ignored {
-    pub fn empty() -> Self { Self { by_event: HashMap::default() } }
+    pub fn empty() -> Self {
+        Self { by_event: HashMap::default() }
+    }
 
     #[inline]
     pub fn is_ignored(&self, event: CGSEventType, wsid: u32) -> bool {
@@ -87,7 +89,9 @@ struct FocusWakeSender {
 }
 
 impl FocusWakeSender {
-    fn notify(&self) { let _ = self.wake.try_send(()); }
+    fn notify(&self) {
+        let _ = self.wake.try_send(());
+    }
 }
 
 pub struct WindowNotify {

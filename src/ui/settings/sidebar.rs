@@ -84,7 +84,9 @@ impl SettingsSidebar {
 }
 
 impl NativeView for SettingsSidebar {
-    fn ns_view(&self) -> &NSView { self.table.ns_view() }
+    fn ns_view(&self) -> &NSView {
+        self.table.ns_view()
+    }
 }
 
 // cgs wraps cells in a reusable NSTableCellView. Resolve selection on that
@@ -108,7 +110,9 @@ fn selection_colors(table: &NSTableView) {
 
 struct DestinationCell(Retained<NSTableCellView>);
 impl NativeView for DestinationCell {
-    fn ns_view(&self) -> &NSView { &self.0 }
+    fn ns_view(&self) -> &NSView {
+        &self.0
+    }
 }
 
 fn destination_cell(ui: &Ui, category: Category) -> DestinationCell {

@@ -1,16 +1,8 @@
-unstable_features = true
-
-imports_granularity = 'Module'
-group_imports = "StdExternalCrate"
+# stable-only options: CI format check runs on the stable toolchain
+# (nightly-only options like imports_granularity, brace_style and
+# fn_single_line were removed when the project moved off nightly rustfmt)
 struct_lit_width = 30
 single_line_let_else_max_width = 60
 chain_width = 80
-# max_width = 110
-# attr_fn_like_width = 110
 fn_call_width = 65
-fn_single_line = true
-where_single_line = true
 use_field_init_shorthand = true
-reorder_impl_items = true
-overflow_delimited_expr = true
-brace_style = 'PreferSameLine'

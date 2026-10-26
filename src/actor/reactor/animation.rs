@@ -707,12 +707,15 @@ impl Reactor {
         }
         let windows = next.windows.iter().map(|w| w.wid).collect();
         let ids = next.windows.iter().map(|w| w.wid).collect();
-        self.presentations.insert(space, ViewportHandle {
-            identity,
-            state,
-            windows: ids,
-            headless: None,
-        });
+        self.presentations.insert(
+            space,
+            ViewportHandle {
+                identity,
+                state,
+                windows: ids,
+                headless: None,
+            },
+        );
         if let Some(tx) = &self.animation_tx {
             let _ = tx.send(Message::Camera(Box::new(next)));
         } else {
@@ -729,7 +732,9 @@ impl Reactor {
 }
 
 impl AnimationManager {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// One runner for all displays. Commands are semantic work; display wakes
     /// are bounded to one permit and each link retains only its newest timing.
@@ -891,7 +896,9 @@ impl AnimationManager {
         }
     }
 
-    fn has_work(&self) -> bool { self.motions.iter().any(Motion::has_work) }
+    fn has_work(&self) -> bool {
+        self.motions.iter().any(Motion::has_work)
+    }
 
     fn stop_windows(&mut self, windows: &[WindowId]) {
         if !windows.is_empty() {
@@ -1401,7 +1408,9 @@ impl ActiveAnimation {
         self.progress = t;
     }
 
-    fn is_complete(&self) -> bool { self.progress >= 1.0 }
+    fn is_complete(&self) -> bool {
+        self.progress >= 1.0
+    }
 }
 
 impl Animation {
@@ -1457,7 +1466,9 @@ impl Animation {
         }
     }
 
-    fn is_empty(&self) -> bool { self.windows.is_empty() }
+    fn is_empty(&self) -> bool {
+        self.windows.is_empty()
+    }
 
     fn begin(&mut self) {
         for window in &mut self.windows {
@@ -1492,7 +1503,9 @@ impl Animation {
 }
 
 #[cfg(test)]
-fn get_frame(a: CGRect, b: CGRect, t: f64) -> CGRect { interpolate_frame(a, b, ease(t)) }
+fn get_frame(a: CGRect, b: CGRect, t: f64) -> CGRect {
+    interpolate_frame(a, b, ease(t))
+}
 
 fn interpolate_frame(a: CGRect, b: CGRect, s: f64) -> CGRect {
     CGRect {
@@ -1515,7 +1528,9 @@ fn ease(t: f64) -> f64 {
     }
 }
 
-fn blend(a: f64, b: f64, s: f64) -> f64 { (1.0 - s) * a + s * b }
+fn blend(a: f64, b: f64, s: f64) -> f64 {
+    (1.0 - s) * a + s * b
+}
 
 #[cfg(test)]
 mod tests {

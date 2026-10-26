@@ -64,10 +64,10 @@ fn logical_window_positions(tree: &ContainerTreeNode) -> HashMap<WindowId, Windo
         .flat_map(|(column, node)| {
             node.children.iter().enumerate().filter_map(move |(row, node)| {
                 let window = node.window_id?;
-                Some((WindowId::new(window.pid, window.idx), WindowLayoutPosition {
-                    column,
-                    row,
-                }))
+                Some((
+                    WindowId::new(window.pid, window.idx),
+                    WindowLayoutPosition { column, row },
+                ))
             })
         })
         .collect()
@@ -93,7 +93,9 @@ pub struct ReactorQueryHandle {
 }
 
 impl ReactorQueryHandle {
-    pub(super) fn new(tx: Sender) -> Self { Self { tx } }
+    pub(super) fn new(tx: Sender) -> Self {
+        Self { tx }
+    }
 
     fn send_query<T>(
         &self,
@@ -233,7 +235,9 @@ impl Reactor {
     }
 
     #[cfg(test)]
-    pub(crate) fn test_default_query_space(&self) -> Option<SpaceId> { self.default_query_space() }
+    pub(crate) fn test_default_query_space(&self) -> Option<SpaceId> {
+        self.default_query_space()
+    }
 
     pub fn query_space_for_display(&self, display_uuid: &str) -> Option<SpaceId> {
         self.space_state

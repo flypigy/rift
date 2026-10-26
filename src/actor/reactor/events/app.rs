@@ -111,13 +111,16 @@ mod tests {
         let mut reactor = test_reactor();
         let (original, mut original_rx) = AppThreadHandle::channel();
         let (duplicate, mut duplicate_rx) = AppThreadHandle::channel();
-        reactor.app_manager.apps.insert(42, AppState {
-            info: AppInfo {
-                bundle_id: None,
-                localized_name: None,
+        reactor.app_manager.apps.insert(
+            42,
+            AppState {
+                info: AppInfo {
+                    bundle_id: None,
+                    localized_name: None,
+                },
+                handle: original.clone(),
             },
-            handle: original.clone(),
-        });
+        );
         assert!(reactor.app_manager.reject_duplicate(42, &duplicate));
         assert!(matches!(
             duplicate_rx.try_recv().unwrap().1,

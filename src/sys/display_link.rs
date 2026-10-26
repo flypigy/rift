@@ -38,7 +38,9 @@ impl LatestTick {
         self.0 = Some(DisplayTick { timestamp, target_timestamp });
     }
 
-    fn take(&mut self) -> Option<DisplayTick> { self.0.take() }
+    fn take(&mut self) -> Option<DisplayTick> {
+        self.0.take()
+    }
 }
 
 struct State {

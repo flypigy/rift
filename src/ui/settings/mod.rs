@@ -60,9 +60,13 @@ pub(super) enum Category {
     About,
 }
 impl Category {
-    fn index(self) -> usize { self as usize }
+    fn index(self) -> usize {
+        self as usize
+    }
 
-    fn title(self) -> &'static str { CATEGORIES[self.index()].1 }
+    fn title(self) -> &'static str {
+        CATEGORIES[self.index()].1
+    }
 }
 pub(super) const CATEGORIES: [(Category, &str, &str); 11] = [
     (Category::General, "General", "gearshape"),
@@ -186,7 +190,9 @@ impl Model {
         }
     }
 
-    fn is_draft(&self) -> bool { self.draft.is_some() }
+    fn is_draft(&self) -> bool {
+        self.draft.is_some()
+    }
 
     fn close_sheet(&self) {
         self.sheet.borrow_mut().take();
@@ -271,7 +277,9 @@ struct Router {
 }
 
 impl Router {
-    fn current(&self) -> Category { self.selected.get() }
+    fn current(&self) -> Category {
+        self.selected.get()
+    }
 
     fn navigate(&self, id: Category) {
         if id != self.current() {
@@ -497,7 +505,9 @@ impl Settings {
         Self { window, router, activation }
     }
 
-    fn model(&self) -> &Rc<Model> { &self.router.model }
+    fn model(&self) -> &Rc<Model> {
+        &self.router.model
+    }
 
     pub fn has_installed_applications(&self) -> bool {
         self.model().env.installed_applications.borrow().is_some()

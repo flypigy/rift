@@ -36,11 +36,15 @@ impl SerialQueue {
 impl Deref for SerialQueue {
     type Target = Unmanaged;
 
-    fn deref(&self) -> &Unmanaged { unsafe { &*self.0 } }
+    fn deref(&self) -> &Unmanaged {
+        unsafe { &*self.0 }
+    }
 }
 
 impl Drop for SerialQueue {
-    fn drop(&mut self) { unsafe { dispatch_release(self.0.cast()) }; }
+    fn drop(&mut self) {
+        unsafe { dispatch_release(self.0.cast()) };
+    }
 }
 
 /// Rare partial-lift deadlines, never per-frame recognition. Isolated from child reaping.

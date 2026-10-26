@@ -60,7 +60,9 @@ define_class!(
 );
 pub(super) struct StackPreview(Retained<StackPreviewView>);
 impl NativeView for StackPreview {
-    fn ns_view(&self) -> &NSView { &self.0 }
+    fn ns_view(&self) -> &NSView {
+        &self.0
+    }
 }
 impl StackPreview {
     pub(super) fn new(ui: &Ui) -> Self {

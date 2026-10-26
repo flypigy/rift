@@ -7,8 +7,12 @@ use crate::actor::reactor::Command;
 use crate::actor::wm_controller::{ConfiguredLayoutCommand, ExecCmd, WmCmd, WmCommand};
 use crate::common::config::{ConfigSource, WorkspaceSelector};
 
-fn layout(cmd: L) -> WmCommand { WmCommand::ReactorCommand(Command::Layout(cmd)) }
-fn reactor(cmd: R) -> WmCommand { WmCommand::ReactorCommand(Command::Reactor(cmd)) }
+fn layout(cmd: L) -> WmCommand {
+    WmCommand::ReactorCommand(Command::Layout(cmd))
+}
+fn reactor(cmd: R) -> WmCommand {
+    WmCommand::ReactorCommand(Command::Reactor(cmd))
+}
 fn actions() -> &'static [(&'static str, WmCommand)] {
     static ACTIONS: std::sync::LazyLock<Vec<(&'static str, WmCommand)>> =
         std::sync::LazyLock::new(|| {

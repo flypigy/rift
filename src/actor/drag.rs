@@ -57,7 +57,9 @@ impl DragMotionPublisher {
         motion
     }
 
-    pub fn wake_queued(&self) -> bool { self.0.wake_queued.load(Ordering::Acquire) }
+    pub fn wake_queued(&self) -> bool {
+        self.0.wake_queued.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -165,7 +167,9 @@ impl DragActor {
         }
     }
 
-    pub fn is_active(&self) -> bool { !matches!(self.state, State::Idle) }
+    pub fn is_active(&self) -> bool {
+        !matches!(self.state, State::Idle)
+    }
 
     fn session(&self) -> Option<&Session> {
         match &self.state {
@@ -174,9 +178,13 @@ impl DragActor {
         }
     }
 
-    pub fn source(&self) -> Option<DragSource> { self.session().map(|session| session.source) }
+    pub fn source(&self) -> Option<DragSource> {
+        self.session().map(|session| session.source)
+    }
 
-    pub fn target(&self) -> Option<DropTarget> { self.session()?.target.validated() }
+    pub fn target(&self) -> Option<DropTarget> {
+        self.session()?.target.validated()
+    }
 
     pub fn preview_target(&self) -> Option<DropTarget> {
         let session = self.session()?;
@@ -202,9 +210,13 @@ impl DragActor {
         })
     }
 
-    pub fn intent(&self) -> Option<DropIntent> { self.session()?.target.intent() }
+    pub fn intent(&self) -> Option<DropIntent> {
+        self.session()?.target.intent()
+    }
 
-    pub fn kind(&self) -> Option<DragKind> { self.session().map(|session| session.kind) }
+    pub fn kind(&self) -> Option<DragKind> {
+        self.session().map(|session| session.kind)
+    }
 
     /// Update reactor-resolved space membership and invalidate destination state.
     pub fn update_current_space(&mut self, current_space: Option<SpaceId>) -> bool {
@@ -784,10 +796,18 @@ mod tests {
     fn frame(x: f64, y: f64, width: f64, height: f64) -> CGRect {
         CGRect::new(CGPoint::new(x, y), CGSize::new(width, height))
     }
-    fn point(x: f64, y: f64) -> CGPoint { CGPoint::new(x, y) }
-    fn rect() -> CGRect { frame(0.0, 0.0, 200.0, 100.0) }
-    fn w(idx: u32) -> WindowId { WindowId::new(1, idx) }
-    fn space() -> SpaceId { SpaceId::new(1) }
+    fn point(x: f64, y: f64) -> CGPoint {
+        CGPoint::new(x, y)
+    }
+    fn rect() -> CGRect {
+        frame(0.0, 0.0, 200.0, 100.0)
+    }
+    fn w(idx: u32) -> WindowId {
+        WindowId::new(1, idx)
+    }
+    fn space() -> SpaceId {
+        SpaceId::new(1)
+    }
     fn target(idx: u32, frame: CGRect) -> DragSceneTarget {
         DragSceneTarget {
             window: w(idx),

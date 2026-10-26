@@ -25,7 +25,9 @@ pub struct AppManager {
 }
 
 impl AppManager {
-    pub fn new() -> Self { AppManager { apps: HashMap::default() } }
+    pub fn new() -> Self {
+        AppManager { apps: HashMap::default() }
+    }
 
     pub fn reject_duplicate(&self, pid: pid_t, handle: &AppThreadHandle) -> bool {
         let Some(existing) = self.apps.get(&pid) else {
@@ -116,7 +118,9 @@ impl DragManager {
         }
     }
 
-    pub fn release_preview(&mut self) { drop(self.preview.take()); }
+    pub fn release_preview(&mut self) {
+        drop(self.preview.take());
+    }
 
     pub fn suppress_preview(&mut self, suppressed: bool) {
         self.preview_suppressed = suppressed;

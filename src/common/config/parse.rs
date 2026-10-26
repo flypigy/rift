@@ -15,7 +15,9 @@ impl Config {
         Self::parse(&buf)
     }
 
-    pub fn default() -> Config { Self::parse(include_str!("../../../rift.default.toml")).unwrap() }
+    pub fn default() -> Config {
+        Self::parse(include_str!("../../../rift.default.toml")).unwrap()
+    }
 
     /// Validates the entire configuration and returns a list of issues found.
     pub fn validate(&self) -> Vec<String> {
@@ -231,7 +233,9 @@ mod tests {
 // Historical runtime snapshots are used by reactor recording/replay, never TOML writes.
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D>(deserializer: D) -> Result<Config, D::Error>
-    where D: serde::Deserializer<'de> {
+    where
+        D: serde::Deserializer<'de>,
+    {
         #[derive(Deserialize)]
         struct ConfigSerde {
             settings: Settings,

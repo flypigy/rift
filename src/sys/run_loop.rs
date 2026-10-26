@@ -112,7 +112,9 @@ pub(crate) struct WakeLatch(AtomicBool);
 
 impl WakeLatch {
     /// Returns true if the caller must deliver a wake.
-    pub(crate) fn request(&self) -> bool { !self.0.swap(true, Ordering::AcqRel) }
+    pub(crate) fn request(&self) -> bool {
+        !self.0.swap(true, Ordering::AcqRel)
+    }
 
     /// Must be called after the wake is received and before polling.
     pub(crate) fn consume(&self) {

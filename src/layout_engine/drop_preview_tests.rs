@@ -15,9 +15,13 @@ const ACTIONS: [WindowDropAction; 6] = [
     WindowDropAction::Insert(Direction::Down),
 ];
 
-fn w(idx: u32) -> WindowId { WindowId::new(1, idx) }
+fn w(idx: u32) -> WindowId {
+    WindowId::new(1, idx)
+}
 
-fn screen() -> CGRect { CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(1200.0, 800.0)) }
+fn screen() -> CGRect {
+    CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(1200.0, 800.0))
+}
 
 fn calculated_source<S: LayoutSystem>(system: &S, layout: LayoutId, source: WindowId) -> CGRect {
     system

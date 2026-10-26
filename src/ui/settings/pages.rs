@@ -27,7 +27,9 @@ fn insertion() -> Vec<(&'static str, WindowInsertionPoint)> {
         ("End of layout", WindowInsertionPoint::EndOfTree),
     ]
 }
-fn bool_choices() -> Vec<(&'static str, bool)> { vec![("Enabled", true), ("Disabled", false)] }
+fn bool_choices() -> Vec<(&'static str, bool)> {
+    vec![("Enabled", true), ("Disabled", false)]
+}
 fn arrangement() -> Vec<(&'static str, Orientation)> {
     vec![
         ("Horizontal", Orientation::Horizontal),

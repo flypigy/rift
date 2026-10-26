@@ -76,7 +76,9 @@ impl Settings {
         }
     }
 
-    pub fn enabled(self) -> bool { self.scroll.is_some() || self.workspace.is_some() }
+    pub fn enabled(self) -> bool {
+        self.scroll.is_some() || self.workspace.is_some()
+    }
 
     fn accepts_count(self, fingers: usize) -> bool {
         self.scroll.into_iter().chain(self.workspace).any(|a| a.fingers == fingers)
@@ -133,7 +135,9 @@ pub struct Control {
     stop: Arc<AtomicBool>,
 }
 impl Control {
-    pub fn publish(&self, motion: Motion) { *self.motion.lock() = Some(motion); }
+    pub fn publish(&self, motion: Motion) {
+        *self.motion.lock() = Some(motion);
+    }
 
     pub fn latest(&self, session: u64) -> Option<Motion> {
         self.motion.lock().filter(|m| m.session == session)
@@ -155,7 +159,9 @@ impl Control {
         }
     }
 
-    pub fn ownership_guard(&self) -> parking_lot::MutexGuard<'_, Ownership> { self.owner.lock() }
+    pub fn ownership_guard(&self) -> parking_lot::MutexGuard<'_, Ownership> {
+        self.owner.lock()
+    }
 
     fn claim(&self, context: &Context) -> bool {
         let routing = self.routing.lock();
@@ -685,21 +691,28 @@ mod tests {
         ] {
             let (_, control, _, _) = setup(true);
             let settings = control.routing.lock().settings;
-            control.configure(settings, true, vec![
-                (
-                    CGRect::new(CGPoint::ZERO, objc2_core_foundation::CGSize::new(1440.0, 900.0)),
-                    SpaceId::new(10),
-                    LayoutMode::Scrolling,
-                ),
-                (
-                    CGRect::new(
-                        CGPoint::new(0.0, -1080.0),
-                        objc2_core_foundation::CGSize::new(1920.0, 1080.0),
+            control.configure(
+                settings,
+                true,
+                vec![
+                    (
+                        CGRect::new(
+                            CGPoint::ZERO,
+                            objc2_core_foundation::CGSize::new(1440.0, 900.0),
+                        ),
+                        SpaceId::new(10),
+                        LayoutMode::Scrolling,
                     ),
-                    SpaceId::new(20),
-                    LayoutMode::Scrolling,
-                ),
-            ]);
+                    (
+                        CGRect::new(
+                            CGPoint::new(0.0, -1080.0),
+                            objc2_core_foundation::CGSize::new(1920.0, 1080.0),
+                        ),
+                        SpaceId::new(20),
+                        LayoutMode::Scrolling,
+                    ),
+                ],
+            );
             let session = control.begin_at(Duration::ZERO, 3, point, 0).unwrap();
             assert_eq!(session.context.space, SpaceId::new(expected_space));
             assert!(session.context.action.scrolling);
@@ -710,14 +723,18 @@ mod tests {
     fn ordinary_contacts_do_not_reserve_routing_before_a_gesture_candidate() {
         let (_, control, tx, mut rx) = setup_settings(true, 4, false);
         let settings = control.routing.lock().settings;
-        control.configure(settings, true, vec![(
-            CGRect::new(
-                objc2_core_foundation::CGPoint::new(-1e9, -1e9),
-                objc2_core_foundation::CGSize::new(2e9, 2e9),
-            ),
-            SpaceId::new(10),
-            LayoutMode::Scrolling,
-        )]);
+        control.configure(
+            settings,
+            true,
+            vec![(
+                CGRect::new(
+                    objc2_core_foundation::CGPoint::new(-1e9, -1e9),
+                    objc2_core_foundation::CGSize::new(2e9, 2e9),
+                ),
+                SpaceId::new(10),
+                LayoutMode::Scrolling,
+            )],
+        );
         let device = || {
             Arc::new(Mutex::new(DeviceInput {
                 session: None,
@@ -921,7 +938,9 @@ mod tests {
     }
     type Fixture = (DeviceSession, Control, Sender, crate::actor::Receiver<Event>);
 
-    fn setup(scrolling: bool) -> Fixture { setup_settings(scrolling, 3, false) }
+    fn setup(scrolling: bool) -> Fixture {
+        setup_settings(scrolling, 3, false)
+    }
     fn setup_settings(scrolling: bool, workspace_fingers: usize, invert: bool) -> Fixture {
         let mut config = Config::default();
         config.settings.gestures.enabled = true;

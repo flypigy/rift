@@ -128,7 +128,9 @@ impl StackLine {
         }
     }
 
-    fn is_enabled(&self) -> bool { self.config.settings.ui.stack_line.enabled }
+    fn is_enabled(&self) -> bool {
+        self.config.settings.ui.stack_line.enabled
+    }
 
     #[instrument(name = "stack_line::handle_event", skip_all)]
     fn handle_event(&mut self, event: Event) {
@@ -420,15 +422,18 @@ impl StackLine {
                     tx.send(Event::TabMoved(node, generation, window, target));
                 }
             });
-            self.native_groups.insert(node, NativeGroup {
-                bar,
-                info,
-                shown,
-                generation,
-                fullscreen: false,
-                ordered_anchor: Cell::new(None),
-                placed_frame: Cell::new(None),
-            });
+            self.native_groups.insert(
+                node,
+                NativeGroup {
+                    bar,
+                    info,
+                    shown,
+                    generation,
+                    fullscreen: false,
+                    ordered_anchor: Cell::new(None),
+                    placed_frame: Cell::new(None),
+                },
+            );
         }
         if tabs_changed {
             self.refresh_native_tabs(node);

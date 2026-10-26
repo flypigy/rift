@@ -623,7 +623,9 @@ fn add_submenu(
     (native, submenu)
 }
 
-fn add_separator(menu: &Menu) { menu.add_separator(); }
+fn add_separator(menu: &Menu) {
+    menu.add_separator();
+}
 
 fn set_menu_item_checked(item: &NSMenuItem, checked: bool) {
     let state = if checked {
@@ -1004,7 +1006,9 @@ fn menu_hotkey_to_key_equivalent(hotkey: &Hotkey) -> Option<(&'static str, NSEve
     Some((key, flags))
 }
 
-fn own_pid() -> i32 { std::process::id() as i32 }
+fn own_pid() -> i32 {
+    std::process::id() as i32
+}
 
 struct MenuActionHandler {
     action_tx: UnboundedSender<MenuAction>,
@@ -1023,11 +1027,17 @@ impl MenuActionHandler {
         })
     }
 
-    fn emit(&self, action: MenuAction) { let _ = self.action_tx.send(action); }
+    fn emit(&self, action: MenuAction) {
+        let _ = self.action_tx.send(action);
+    }
 
-    fn set_layout_files(&self, paths: Vec<PathBuf>) { *self.layout_files.borrow_mut() = paths; }
+    fn set_layout_files(&self, paths: Vec<PathBuf>) {
+        *self.layout_files.borrow_mut() = paths;
+    }
 
-    fn set_layout_folder(&self, path: PathBuf) { *self.layout_folder.borrow_mut() = path; }
+    fn set_layout_folder(&self, path: PathBuf) {
+        *self.layout_folder.borrow_mut() = path;
+    }
 
     fn layout_file_for_item(&self, item: Option<&NSMenuItem>) -> Option<PathBuf> {
         let index = usize::try_from(item?.tag()).ok()?;
@@ -1201,17 +1211,25 @@ impl MenuActionHandler {
         self.emit(MenuAction::OpenDocumentation);
     }
 
-    fn on_open_github(&self, _sender: Option<&NSMenuItem>) { self.emit(MenuAction::OpenGitHub); }
+    fn on_open_github(&self, _sender: Option<&NSMenuItem>) {
+        self.emit(MenuAction::OpenGitHub);
+    }
 
-    fn on_open_matrix(&self, _sender: Option<&NSMenuItem>) { self.emit(MenuAction::OpenMatrix); }
+    fn on_open_matrix(&self, _sender: Option<&NSMenuItem>) {
+        self.emit(MenuAction::OpenMatrix);
+    }
 
-    fn on_open_sponsor(&self, _sender: Option<&NSMenuItem>) { self.emit(MenuAction::OpenSponsor); }
+    fn on_open_sponsor(&self, _sender: Option<&NSMenuItem>) {
+        self.emit(MenuAction::OpenSponsor);
+    }
 
     fn on_reload_config(&self, _sender: Option<&NSMenuItem>) {
         self.emit(MenuAction::ReloadConfig);
     }
 
-    fn on_quit_rift(&self, _sender: Option<&NSMenuItem>) { self.emit(MenuAction::QuitRift); }
+    fn on_quit_rift(&self, _sender: Option<&NSMenuItem>) {
+        self.emit(MenuAction::QuitRift);
+    }
 }
 
 #[cfg(test)]
@@ -1415,9 +1433,10 @@ mod layout_library_tests {
             } else {
                 BORDER_WIDTH / 2.0
             };
-            assert_eq!(layout.separators, vec![
-                cell_widths[..2].iter().sum::<f64>() + spacing + SEPARATOR_SPACING
-            ]);
+            assert_eq!(
+                layout.separators,
+                vec![cell_widths[..2].iter().sum::<f64>() + spacing + SEPARATOR_SPACING]
+            );
             assert_eq!(cells[0].bg_rect.origin.x, inset);
             assert_eq!(cells[3].bg_rect.max().x + inset, layout.size.width);
             let single = build_layout(&render_inputs(&displays[..1], &settings), &attrs);
@@ -1599,7 +1618,9 @@ fn build_cached_text_line(
 }
 
 impl MenuIconView {
-    fn new(mtm: MainThreadMarker) -> Self { Self::build(mtm, true) }
+    fn new(mtm: MainThreadMarker) -> Self {
+        Self::build(mtm, true)
+    }
 
     fn build(mtm: MainThreadMarker, clear_background: bool) -> Self {
         let font = NSFont::systemFontOfSize_weight(FONT_SIZE, unsafe { NSFontWeightMedium });
@@ -1620,7 +1641,9 @@ impl MenuIconView {
 impl std::ops::Deref for MenuIconView {
     type Target = NSView;
 
-    fn deref(&self) -> &NSView { self.canvas.ns_view() }
+    fn deref(&self) -> &NSView {
+        self.canvas.ns_view()
+    }
 }
 
 /// An embedded indicator using the status item's exact layout and drawing path.
@@ -1633,15 +1656,21 @@ impl MenuBarPreview {
     pub fn new(ui: &Ui) -> Self {
         let frame = |x, y, w, h| CGRect::new(CGPoint::new(x, y), CGSize::new(w, h));
         let workspaces = [
-            ("Writing", vec![
-                frame(0.0, 0.0, 600.0, 800.0),
-                frame(600.0, 0.0, 600.0, 800.0),
-            ]),
-            ("Development", vec![
-                frame(0.0, 0.0, 800.0, 800.0),
-                frame(800.0, 0.0, 400.0, 400.0),
-                frame(800.0, 400.0, 400.0, 400.0),
-            ]),
+            (
+                "Writing",
+                vec![
+                    frame(0.0, 0.0, 600.0, 800.0),
+                    frame(600.0, 0.0, 600.0, 800.0),
+                ],
+            ),
+            (
+                "Development",
+                vec![
+                    frame(0.0, 0.0, 800.0, 800.0),
+                    frame(800.0, 0.0, 400.0, 400.0),
+                    frame(800.0, 400.0, 400.0, 400.0),
+                ],
+            ),
             ("Reading", vec![frame(0.0, 0.0, 1200.0, 800.0)]),
             ("Planning", vec![]),
         ]
@@ -1687,10 +1716,14 @@ impl MenuBarPreview {
         self.view.set_layout(layout);
     }
 
-    pub fn width(&self) -> f64 { self.view.layout.borrow().size.width }
+    pub fn width(&self) -> f64 {
+        self.view.layout.borrow().size.width
+    }
 }
 impl cgs::NativeView for MenuBarPreview {
-    fn ns_view(&self) -> &NSView { self.view.canvas.ns_view() }
+    fn ns_view(&self) -> &NSView {
+        self.view.canvas.ns_view()
+    }
 }
 
 fn label_cell_width(text_width: f64) -> f64 {
@@ -1825,14 +1858,17 @@ fn draw_menu_icon(cg: &CGContext, bounds: CGRect, layout: &MenuIconLayout, clear
     }
     // AppKit text controls may leave a flipped text matrix in an embedded
     // drawing context. Core Text needs its own upright point-space matrix.
-    CGContext::set_text_matrix(Some(cg), CGAffineTransform {
-        a: 1.0,
-        b: 0.0,
-        c: 0.0,
-        d: 1.0,
-        tx: 0.0,
-        ty: 0.0,
-    });
+    CGContext::set_text_matrix(
+        Some(cg),
+        CGAffineTransform {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 1.0,
+            tx: 0.0,
+            ty: 0.0,
+        },
+    );
     CGContext::set_alpha(Some(cg), 1.0);
     CGContext::set_blend_mode(Some(cg), CGBlendMode::Normal);
     unsafe {

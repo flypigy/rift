@@ -203,7 +203,9 @@ impl DragPreview {
     }
 
     #[inline]
-    fn bounds(size: CGSize) -> CGRect { CGRect::new(CGPoint::new(0.0, 0.0), size) }
+    fn bounds(size: CGSize) -> CGRect {
+        CGRect::new(CGPoint::new(0.0, 0.0), size)
+    }
 
     #[inline]
     fn card_frame(size: CGSize) -> CGRect {

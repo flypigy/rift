@@ -344,7 +344,9 @@ impl Future for Timer {
 }
 
 impl Drop for Timer {
-    fn drop(&mut self) { self.cancel(); }
+    fn drop(&mut self) {
+        self.cancel();
+    }
 }
 
 #[cfg(test)]

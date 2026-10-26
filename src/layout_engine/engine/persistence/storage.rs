@@ -319,7 +319,9 @@ impl LayoutEngine {
         }
     }
 
-    pub fn serialize_to_string(&self) -> String { PersistedLayout::serialize_engine(self) }
+    pub fn serialize_to_string(&self) -> String {
+        PersistedLayout::serialize_engine(self)
+    }
 
     pub fn finish_loading(
         &mut self,

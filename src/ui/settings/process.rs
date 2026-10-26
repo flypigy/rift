@@ -608,10 +608,13 @@ fn apply(
         return Message::Source(Ok(Snapshot { revision, source: base }));
     }
     match serde_json::to_value(&candidate) {
-        Ok(candidate) => source(client, RiftRequest::ApplySettingsSource {
-            expected_revision: revision,
-            source: candidate,
-        }),
+        Ok(candidate) => source(
+            client,
+            RiftRequest::ApplySettingsSource {
+                expected_revision: revision,
+                source: candidate,
+            },
+        ),
         Err(error) => Message::InvalidEdit(error.to_string()),
     }
 }

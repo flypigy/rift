@@ -53,9 +53,13 @@ const DISPLAY_STABLE_REQUIRED_HITS: u8 = 2;
 pub struct TopologyGuard(Arc<AtomicU64>);
 
 impl TopologyGuard {
-    pub fn invalidated_revision(&self) -> u64 { self.0.load(Ordering::Acquire) }
+    pub fn invalidated_revision(&self) -> u64 {
+        self.0.load(Ordering::Acquire)
+    }
 
-    fn invalidate(&self, revision: u64) { self.0.store(revision, Ordering::Release); }
+    fn invalidate(&self, revision: u64) {
+        self.0.store(revision, Ordering::Release);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +143,9 @@ impl ForwardedSpaceState {
         self.screens.iter().filter_map(|screen| screen.space)
     }
 
-    pub fn first_known_space(&self) -> Option<SpaceId> { self.iter_known_spaces().next() }
+    pub fn first_known_space(&self) -> Option<SpaceId> {
+        self.iter_known_spaces().next()
+    }
 }
 
 pub struct AuthorityState {
@@ -248,7 +254,9 @@ impl SpacesActor {
         Self::new_with_state(reactor_tx, wm_tx, state)
     }
 
-    pub fn topology_guard(&self) -> TopologyGuard { self.state.topology_guard.clone() }
+    pub fn topology_guard(&self) -> TopologyGuard {
+        self.state.topology_guard.clone()
+    }
 
     pub async fn run(mut self) {
         while let Some((span, event)) = self.receiver.recv().await {
@@ -464,7 +472,9 @@ impl SpacesActor {
     }
 
     // Sleep and session inactivity end only on wake or unlock; churn clears itself.
-    fn lifecycle_quarantined(&self) -> bool { self.state.sleeping || self.state.session_inactive }
+    fn lifecycle_quarantined(&self) -> bool {
+        self.state.sleeping || self.state.session_inactive
+    }
 
     fn should_buffer_topology_updates(&self) -> bool {
         self.lifecycle_quarantined() || self.state.display_churn_active
@@ -479,7 +489,9 @@ impl SpacesActor {
                 .is_some_and(|snapshot| snapshot.revision == self.state.revision)
     }
 
-    fn should_quarantine_window_space_event(&self) -> bool { !self.topology_is_authoritative() }
+    fn should_quarantine_window_space_event(&self) -> bool {
+        !self.topology_is_authoritative()
+    }
 
     fn collect_state(&mut self) -> Option<NativeSnapshot> {
         let resample_geometry =

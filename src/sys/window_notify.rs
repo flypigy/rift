@@ -89,7 +89,9 @@ pub fn init(event: CGSEventType) -> i32 {
 }
 
 /// Receiver for every event registered through [`init`]. Returns `None` once taken.
-pub fn take_receiver() -> Option<actor::Receiver<EventData>> { EVENT_CHANNEL.1.lock().take() }
+pub fn take_receiver() -> Option<actor::Receiver<EventData>> {
+    EVENT_CHANNEL.1.lock().take()
+}
 
 pub fn update_window_notifications(window_ids: &[u32]) {
     unsafe {

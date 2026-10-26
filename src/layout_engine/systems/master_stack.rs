@@ -22,10 +22,14 @@ pub struct MasterStackLayoutSystem {
     pub(super) settings: MasterStackSettings,
 }
 
-fn default_master_stack_settings() -> MasterStackSettings { MasterStackSettings::default() }
+fn default_master_stack_settings() -> MasterStackSettings {
+    MasterStackSettings::default()
+}
 
 impl Default for MasterStackLayoutSystem {
-    fn default() -> Self { Self::new(MasterStackSettings::default()) }
+    fn default() -> Self {
+        Self::new(MasterStackSettings::default())
+    }
 }
 
 impl MasterStackLayoutSystem {
@@ -843,7 +847,9 @@ impl LayoutSystem for MasterStackLayoutSystem {
         self.inner.parent_of_selection_is_stacked(layout)
     }
 
-    fn unjoin_selection(&mut self, layout: LayoutId) { self.normalize_layout(layout); }
+    fn unjoin_selection(&mut self, layout: LayoutId) {
+        self.normalize_layout(layout);
+    }
 
     fn resize_selection_by(
         &mut self,
@@ -855,9 +861,13 @@ impl LayoutSystem for MasterStackLayoutSystem {
         self.inner.resize_selection_by(layout, amount, orientation);
     }
 
-    fn rebalance(&mut self, layout: LayoutId) { self.normalize_layout(layout); }
+    fn rebalance(&mut self, layout: LayoutId) {
+        self.normalize_layout(layout);
+    }
 
-    fn toggle_tile_orientation(&mut self, layout: LayoutId) { self.normalize_layout(layout); }
+    fn toggle_tile_orientation(&mut self, layout: LayoutId) {
+        self.normalize_layout(layout);
+    }
 }
 
 #[cfg(test)]
@@ -865,7 +875,9 @@ mod tests {
     use super::*;
     use crate::common::config::{LayoutMode, LayoutSettings};
 
-    fn w(idx: u32) -> WindowId { WindowId::new(1, idx) }
+    fn w(idx: u32) -> WindowId {
+        WindowId::new(1, idx)
+    }
 
     #[test]
     fn test_create_layout() {
@@ -1005,11 +1017,10 @@ mod tests {
         system.add_window_after_selection(layout, w(2));
         system.add_window_after_selection(layout, w(3));
 
-        assert_eq!(system.windows_in_layout_by_container(layout), vec![
-            w(1),
-            w(2),
-            w(3)
-        ]);
+        assert_eq!(
+            system.windows_in_layout_by_container(layout),
+            vec![w(1), w(2), w(3)]
+        );
     }
 
     #[test]
@@ -1087,9 +1098,10 @@ mod tests {
         let before = system.windows_in_layout_by_container(layout);
         assert!(system.select_window(layout, before[0]));
         assert!(system.move_selection(layout, Direction::Right));
-        assert_eq!(system.windows_in_layout_by_container(layout), vec![
-            before[1], before[0], before[2]
-        ]);
+        assert_eq!(
+            system.windows_in_layout_by_container(layout),
+            vec![before[1], before[0], before[2]]
+        );
     }
 
     #[test]

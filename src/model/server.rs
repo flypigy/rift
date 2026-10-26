@@ -129,7 +129,9 @@ impl From<RuntimeDisplayData> for protocol::DisplayData {
 
 impl Serialize for RuntimeWindowData {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
+    where
+        S: Serializer,
+    {
         #[serde_as]
         #[derive(Serialize)]
         struct WindowDataSer<'a> {
@@ -163,7 +165,9 @@ impl Serialize for RuntimeWindowData {
 
 impl<'de> Deserialize<'de> for RuntimeWindowData {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
+    where
+        D: Deserializer<'de>,
+    {
         #[serde_as]
         #[derive(Deserialize)]
         struct WindowDataDe {
@@ -211,7 +215,9 @@ impl<'de> Deserialize<'de> for RuntimeWindowData {
 
 impl Serialize for RuntimeDisplayData {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
+    where
+        S: Serializer,
+    {
         #[serde_as]
         #[derive(Serialize)]
         struct DisplayDataSer<'a> {
@@ -247,7 +253,9 @@ impl Serialize for RuntimeDisplayData {
 
 impl<'de> Deserialize<'de> for RuntimeDisplayData {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
+    where
+        D: Deserializer<'de>,
+    {
         #[serde_as]
         #[derive(Deserialize)]
         struct DisplayDataDe {

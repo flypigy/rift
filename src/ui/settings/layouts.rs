@@ -149,12 +149,15 @@ impl Inspector {
                     Disclosure::new(
                         &ui,
                         ["Spacing", "Display overrides"][index],
-                        View::new(&ui).content(shared_hosts[index].clone(), Insets {
-                            top: 2.0,
-                            left: 12.0,
-                            bottom: 14.0,
-                            right: 12.0,
-                        }),
+                        View::new(&ui).content(
+                            shared_hosts[index].clone(),
+                            Insets {
+                                top: 2.0,
+                                left: 12.0,
+                                bottom: 14.0,
+                                right: 12.0,
+                            },
+                        ),
                     )
                     .header_insets(cgs::uniform_insets(12.0))
                     .compact()
@@ -184,12 +187,15 @@ impl Inspector {
             pages::align_form(position.ns_view());
             let shared = VStack::new(&ui)
                 .spacing(0.0)
-                .push(View::new(&ui).content(position, Insets {
-                    top: 10.0,
-                    left: 12.0,
-                    bottom: 10.0,
-                    right: 12.0,
-                }))
+                .push(View::new(&ui).content(
+                    position,
+                    Insets {
+                        top: 10.0,
+                        left: 12.0,
+                        bottom: 10.0,
+                        right: 12.0,
+                    },
+                ))
                 .push(inset_divider(&ui))
                 .push(disclosures[0].clone())
                 .push(inset_divider(&ui))
@@ -233,7 +239,9 @@ impl Inspector {
         inspector
     }
 
-    pub fn default_control(&self) -> Rc<dyn NativeView> { self.default_control.clone() }
+    pub fn default_control(&self) -> Rc<dyn NativeView> {
+        self.default_control.clone()
+    }
 
     /// Make `mode` the default for workspaces without their own layout.
     fn set_default(&self, mode: LayoutMode) {
@@ -435,7 +443,9 @@ impl Inspector {
     }
 }
 impl NativeView for Inspector {
-    fn ns_view(&self) -> &objc2_app_kit::NSView { self.root.view.ns_view() }
+    fn ns_view(&self) -> &objc2_app_kit::NSView {
+        self.root.view.ns_view()
+    }
 }
 
 /// A layout’s Use as Default and Restore Defaults… actions, for one layout or, with
@@ -497,12 +507,15 @@ fn floating_note(ui: &Ui) -> HStack {
 
 /// A row divider aligned with the shared settings’ content.
 fn inset_divider(ui: &Ui) -> View {
-    View::new(ui).content(Divider::new(ui), Insets {
-        top: 0.0,
-        left: 12.0,
-        bottom: 0.0,
-        right: 12.0,
-    })
+    View::new(ui).content(
+        Divider::new(ui),
+        Insets {
+            top: 0.0,
+            left: 12.0,
+            bottom: 0.0,
+            right: 12.0,
+        },
+    )
 }
 
 /// Collapsed Spacing: the screen-edge and between-window gaps, or their range.

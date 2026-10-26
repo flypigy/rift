@@ -4,7 +4,9 @@ use super::*;
 
 pub(super) const CURRENT_SCHEMA_VERSION: u32 = 5;
 
-fn legacy_schema_version() -> u32 { 0 }
+fn legacy_schema_version() -> u32 {
+    0
+}
 
 /// Pre-consolidation file representation. It is normalized before any runtime use.
 #[derive(Deserialize, Default)]

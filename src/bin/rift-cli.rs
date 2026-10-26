@@ -785,7 +785,8 @@ fn into_protocol_command(command: CliCommand) -> Result<rift_protocol::RiftComma
 fn decode_protocol<T, U>(value: T) -> Result<U, String>
 where
     T: Serialize,
-    U: DeserializeOwned, {
+    U: DeserializeOwned,
+{
     serde_json::from_value(serde_json::to_value(value).map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())
 }
@@ -1221,9 +1222,12 @@ mod tests {
     #[test]
     fn binding_mode_query_and_subscription_parse() {
         let cli = Cli::try_parse_from(["rift-cli", "query", "binding-mode"]).unwrap();
-        assert!(matches!(cli.command, Commands::Query {
-            query: QueryCommands::BindingMode
-        }));
+        assert!(matches!(
+            cli.command,
+            Commands::Query {
+                query: QueryCommands::BindingMode
+            }
+        ));
         assert_eq!(
             build_query_request(QueryCommands::BindingMode).unwrap(),
             RiftRequest::GetBindingMode

@@ -58,11 +58,17 @@ impl WindowRecord {
         self.state.as_ref().map(|state| state.frame_monotonic)
     }
 
-    pub fn window_server_id(&self) -> Option<WindowServerId> { self.window_server_id }
+    pub fn window_server_id(&self) -> Option<WindowServerId> {
+        self.window_server_id
+    }
 
-    pub fn visibility(&self) -> WindowVisibility { self.visibility }
+    pub fn visibility(&self) -> WindowVisibility {
+        self.visibility
+    }
 
-    pub fn pending_transfer(&self) -> Option<PendingWindowTransfer> { self.pending_transfer }
+    pub fn pending_transfer(&self) -> Option<PendingWindowTransfer> {
+        self.pending_transfer
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -649,7 +655,9 @@ impl WindowStore {
         self.windows.get(&window_id)
     }
 
-    pub fn contains_window(&self, window_id: WindowId) -> bool { self.window(window_id).is_some() }
+    pub fn contains_window(&self, window_id: WindowId) -> bool {
+        self.window(window_id).is_some()
+    }
 
     pub fn tracked_window_count(&self) -> usize {
         self.windows.values().filter(|record| record.state.is_some()).count()
@@ -1671,9 +1679,10 @@ mod tests {
         window_store.set_window_server_space(wsid, Some(space));
 
         assert_eq!(window_store.window_server_space(wsid), Some(space));
-        assert_eq!(window_store.iter_window_server_ids().collect::<Vec<_>>(), vec![
-            wsid
-        ]);
+        assert_eq!(
+            window_store.iter_window_server_ids().collect::<Vec<_>>(),
+            vec![wsid]
+        );
     }
 
     #[test]

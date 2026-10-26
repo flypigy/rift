@@ -378,10 +378,13 @@ pub fn handle_command_reactor_toggle_space_activated(
     let Some(space) = payload.space else {
         return Ok(EventOutcome::no_change());
     };
-    policy.toggle_space_activated(payload.config, ToggleSpaceContext {
-        space,
-        display_uuid: payload.display_uuid.clone(),
-    });
+    policy.toggle_space_activated(
+        payload.config,
+        ToggleSpaceContext {
+            space,
+            display_uuid: payload.display_uuid.clone(),
+        },
+    );
     let enabled = policy.compute_active_spaces(
         payload.config,
         &[Some(space)],

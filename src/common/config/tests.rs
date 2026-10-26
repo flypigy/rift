@@ -476,10 +476,13 @@ fn typed_collections_keep_source_aliases_and_inline_commands() {
     document
         .update(|source| {
             source.virtual_workspaces.workspace_names = vec!["coding".into(), "mail".into()];
-            source.settings.layout.gaps.per_display.insert("display-a".into(), GapOverride {
-                inner: Some(InnerGaps { horizontal: 8.0, vertical: 8.0 }),
-                outer: None,
-            });
+            source.settings.layout.gaps.per_display.insert(
+                "display-a".into(),
+                GapOverride {
+                    inner: Some(InnerGaps { horizontal: 8.0, vertical: 8.0 }),
+                    outer: None,
+                },
+            );
             source.virtual_workspaces.app_rules.push(AppWorkspaceRule {
                 app_id: Some("com.example.Tool".into()),
                 floating: true,
@@ -764,9 +767,10 @@ fn ordered_display_preferences_round_trip_and_validate() {
         document
             .update(|s| s.virtual_workspaces.workspace_rules = vec![rule.clone()])
             .unwrap();
-        assert_eq!(document.runtime().unwrap().virtual_workspaces.workspace_rules, [
-            rule
-        ]);
+        assert_eq!(
+            document.runtime().unwrap().virtual_workspaces.workspace_rules,
+            [rule]
+        );
     }
     for values in [vec![], vec![""], vec!["builtin", " "]] {
         let error = document
@@ -781,10 +785,11 @@ fn ordered_display_preferences_round_trip_and_validate() {
 
 #[test]
 fn workspace_names_reject_explicit_and_generated_collisions() {
-    for names in [vec!["Main", "Dev", "Main"], vec!["Workspace 3"], vec![
-        "",
-        "Workspace 1",
-    ]] {
+    for names in [
+        vec!["Main", "Dev", "Main"],
+        vec!["Workspace 3"],
+        vec!["", "Workspace 1"],
+    ] {
         let settings = VirtualWorkspaceSettings {
             default_workspace_count: 3,
             workspace_names: names.into_iter().map(String::from).collect(),

@@ -153,7 +153,9 @@ fn filter_workspaces(workspaces: &mut Vec<RuntimeWorkspaceData>, show_empty: boo
     }
 }
 
-fn vertical_scroll(delta: CGPoint) -> bool { delta.y.abs() >= delta.x.abs() }
+fn vertical_scroll(delta: CGPoint) -> bool {
+    delta.y.abs() >= delta.x.abs()
+}
 
 fn scrolled_horizontal_offset(
     display: CGRect,
@@ -963,7 +965,9 @@ impl OverviewSession {
         Some(session)
     }
 
-    pub(crate) fn is_empty(&self) -> bool { self.displays.is_empty() }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.displays.is_empty()
+    }
 
     pub(crate) fn take_drop(&mut self) -> Option<crate::actor::reactor::OverviewDrop> {
         self.drop.take()
@@ -1731,7 +1735,9 @@ fn deliver(tx: actor::Sender<PreviewEvent>, result: PreviewEvent) {
 // Framework captures may finish after a session closes. Bound jobs across all sessions.
 static CAPTURE_JOBS: AtomicUsize = AtomicUsize::new(0);
 
-pub(crate) fn outstanding_preview_captures() -> usize { CAPTURE_JOBS.load(Ordering::Acquire) }
+pub(crate) fn outstanding_preview_captures() -> usize {
+    CAPTURE_JOBS.load(Ordering::Acquire)
+}
 
 fn acquire_capture_slot(jobs: &AtomicUsize) -> bool {
     jobs.try_update(Ordering::AcqRel, Ordering::Acquire, |n| (n < 2).then_some(n + 1))
@@ -1881,7 +1887,9 @@ struct PreviewSchedule {
     active: HashSet<WindowId>,
 }
 impl PreviewSchedule {
-    fn needs(&self, id: WindowId) -> bool { !self.attempted.contains(&id) }
+    fn needs(&self, id: WindowId) -> bool {
+        !self.attempted.contains(&id)
+    }
 
     fn enqueue(&mut self, request: PreviewRequest) {
         if self.attempted.insert(request.id) {
@@ -1899,7 +1907,9 @@ impl PreviewSchedule {
         Some(request)
     }
 
-    fn complete(&mut self, id: WindowId) { self.active.remove(&id); }
+    fn complete(&mut self, id: WindowId) {
+        self.active.remove(&id);
+    }
 }
 fn owner_matches(request: &PreviewRequest, pid: i32, bundle: &str) -> bool {
     request.id.pid == pid && request.bundle.as_ref().is_none_or(|expected| expected == bundle)
@@ -1991,9 +2001,13 @@ pub(crate) struct PreviewCache {
     bytes: usize,
 }
 impl PreviewCache {
-    fn bytes(&self) -> usize { self.bytes }
+    fn bytes(&self) -> usize {
+        self.bytes
+    }
 
-    pub(crate) fn close(&mut self) { self.trim(CLOSED_PREVIEW_BYTES); }
+    pub(crate) fn close(&mut self) {
+        self.trim(CLOSED_PREVIEW_BYTES);
+    }
 
     fn trim(&mut self, budget: usize) {
         while self.bytes > budget || self.entries.len() > 32 {
@@ -2003,7 +2017,9 @@ impl PreviewCache {
         }
     }
 
-    pub(crate) fn stats(&self) -> (usize, usize) { (self.entries.len(), self.bytes()) }
+    pub(crate) fn stats(&self) -> (usize, usize) {
+        (self.entries.len(), self.bytes())
+    }
 
     fn get(&self, window: &RuntimeWindowData) -> Option<&CFRetained<CGImage>> {
         self.entries
@@ -2309,11 +2325,14 @@ mod tests {
     #[test]
     fn strip_pans_columns_that_fit_overlay_but_extend_past_desktop() {
         let display = rect(0.0, 0.0, 1200.0, 800.0);
-        let ws = workspace(0, vec![
-            window(1, rect(0.0, 0.0, 600.0, 800.0), false),
-            window(2, rect(600.0, 0.0, 600.0, 800.0), false),
-            window(3, rect(1200.0, 0.0, 600.0, 800.0), false),
-        ]);
+        let ws = workspace(
+            0,
+            vec![
+                window(1, rect(0.0, 0.0, 600.0, 800.0), false),
+                window(2, rect(600.0, 0.0, 600.0, 800.0), false),
+                window(3, rect(1200.0, 0.0, 600.0, 800.0), false),
+            ],
+        );
         let p = project(
             display,
             display.size,
@@ -2346,11 +2365,14 @@ mod tests {
         let display = rect(0.0, 0.0, 1200.0, 800.0);
         let workspaces: Vec<_> = (0..3)
             .map(|index| {
-                workspace(index, vec![window(
-                    index as u32 + 1,
-                    rect(2500.0, 0.0, 400.0, 800.0),
-                    false,
-                )])
+                workspace(
+                    index,
+                    vec![window(
+                        index as u32 + 1,
+                        rect(2500.0, 0.0, 400.0, 800.0),
+                        false,
+                    )],
+                )
             })
             .collect();
         let before = format!("{workspaces:?}");
@@ -2405,11 +2427,10 @@ mod tests {
 
     #[test]
     fn transparent_preview_gutters_select_workspace_instead_of_window() {
-        let workspaces = vec![workspace(1, vec![window(
+        let workspaces = vec![workspace(
             1,
-            rect(0.0, 0.0, 400.0, 200.0),
-            false,
-        )])];
+            vec![window(1, rect(0.0, 0.0, 400.0, 200.0), false)],
+        )];
         let projection = vec![WorkspaceProjection {
             source: 0,
             frame: rect(0.0, 100.0, 1200.0, 360.0),
@@ -2530,10 +2551,13 @@ mod tests {
     #[test]
     fn geometry_uses_source_display_and_floating_cards_are_on_top() {
         let display = rect(1600.0, -100.0, 1200.0, 800.0);
-        let workspaces = vec![workspace(1, vec![
-            window(1, rect(1700.0, 0.0, 400.0, 200.0), true),
-            window(2, rect(1700.0, 0.0, 400.0, 200.0), false),
-        ])];
+        let workspaces = vec![workspace(
+            1,
+            vec![
+                window(1, rect(1700.0, 0.0, 400.0, 200.0), true),
+                window(2, rect(1700.0, 0.0, 400.0, 200.0), false),
+            ],
+        )];
         let projection = project(display, display.size, &workspaces, 0, 0.0, &HashMap::default());
         let cards = &projection[0].windows;
         assert_eq!(cards[0].source, 1);
@@ -2552,10 +2576,13 @@ mod tests {
     #[test]
     fn scrolling_clips_windows_and_exposes_them_without_changing_runtime_frames() {
         let display = rect(0.0, 0.0, 1200.0, 800.0);
-        let workspaces = vec![workspace(1, vec![
-            window(1, rect(-800.0, 0.0, 400.0, 800.0), false),
-            window(2, rect(2500.0, 0.0, 400.0, 800.0), false),
-        ])];
+        let workspaces = vec![workspace(
+            1,
+            vec![
+                window(1, rect(-800.0, 0.0, 400.0, 800.0), false),
+                window(2, rect(2500.0, 0.0, 400.0, 800.0), false),
+            ],
+        )];
         let original = workspaces[0].windows[1].info.frame;
         let projection = project(display, display.size, &workspaces, 0, 0.0, &HashMap::default());
         assert_eq!(projection[0].windows.len(), 1); // partially clipped left card

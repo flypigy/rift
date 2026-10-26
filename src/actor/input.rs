@@ -644,7 +644,9 @@ impl Input {
     }
 
     #[inline]
-    fn reset_mouse_move_sample_gate(&self) { self.mouse_move_last_timestamp.set(None); }
+    fn reset_mouse_move_sample_gate(&self) {
+        self.mouse_move_last_timestamp.set(None);
+    }
 
     fn reconcile_after_tap_reenabled(&self) {
         let mut state = self.state.borrow_mut();
@@ -1174,9 +1176,13 @@ impl State {
         }
     }
 
-    fn note_key_down(&mut self, key_code: KeyCode) { self.pressed_keys.insert(key_code); }
+    fn note_key_down(&mut self, key_code: KeyCode) {
+        self.pressed_keys.insert(key_code);
+    }
 
-    fn note_key_up(&mut self, key_code: KeyCode) { self.pressed_keys.remove(&key_code); }
+    fn note_key_up(&mut self, key_code: KeyCode) {
+        self.pressed_keys.remove(&key_code);
+    }
 
     fn note_flags_changed(&mut self, key_code: KeyCode) {
         if !is_modifier_key(key_code) {
@@ -1892,14 +1898,10 @@ mod tests {
         let (input, mut wm_rx, _) = input();
         input.hotkeys_active.set(true);
         input.rebuild_binding_maps();
-        input
-            .hotkeys
-            .borrow_mut()
-            .get_mut(0)
-            .unwrap()
-            .insert(Hotkey::new(Modifiers::empty(), KeyCode::KeyA), vec![
-                WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
-            ]);
+        input.hotkeys.borrow_mut().get_mut(0).unwrap().insert(
+            Hotkey::new(Modifiers::empty(), KeyCode::KeyA),
+            vec![WmCommand::Wm(wm_controller::WmCmd::ReloadConfig)],
+        );
         let event = CGEvent::new_keyboard_event(None, 0, true).unwrap();
         CGEvent::set_flags(Some(&event), CGEventFlags::empty());
         assert!(!input.on_event(CGEventType::KeyDown, &event, None));
@@ -1982,10 +1984,13 @@ mod tests {
     fn normal_command_after_binding_mode_transition_still_runs() {
         let (input, mut wm_rx, _) = input();
         input.install_binding_specs(vec![
-            ("default".into(), vec![(
-                "A".into(),
-                WmCommand::Wm(wm_controller::WmCmd::BindingMode("other".into())),
-            )]),
+            (
+                "default".into(),
+                vec![(
+                    "A".into(),
+                    WmCommand::Wm(wm_controller::WmCmd::BindingMode("other".into())),
+                )],
+            ),
             ("other".into(), vec![]),
         ]);
         input.hotkeys_active.set(true);
@@ -2008,14 +2013,20 @@ mod tests {
     fn layout_rebuild_preserves_active_mode_and_rebuilds_each_map() {
         let (input, _, _) = input();
         input.install_binding_specs(vec![
-            ("default".into(), vec![(
-                "Ctrl + A".into(),
-                WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
-            )]),
-            ("other".into(), vec![(
-                "Ctrl + B".into(),
-                WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
-            )]),
+            (
+                "default".into(),
+                vec![(
+                    "Ctrl + A".into(),
+                    WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
+                )],
+            ),
+            (
+                "other".into(),
+                vec![(
+                    "Ctrl + B".into(),
+                    WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
+                )],
+            ),
         ]);
         input.hotkeys_active.set(true);
         input.active_mode.set(1);
@@ -2030,14 +2041,20 @@ mod tests {
     fn generic_modifiers_expand_inside_each_mode_and_replacement_resets_to_default() {
         let (input, _, _) = input();
         let specs = vec![
-            ("default".into(), vec![(
-                "Ctrl + A".into(),
-                WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
-            )]),
-            ("other".into(), vec![(
-                "Alt + B".into(),
-                WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
-            )]),
+            (
+                "default".into(),
+                vec![(
+                    "Ctrl + A".into(),
+                    WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
+                )],
+            ),
+            (
+                "other".into(),
+                vec![(
+                    "Alt + B".into(),
+                    WmCommand::Wm(wm_controller::WmCmd::ReloadConfig),
+                )],
+            ),
         ];
         input.install_binding_specs(specs.clone());
         input.hotkeys_active.set(true);

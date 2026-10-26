@@ -211,7 +211,9 @@ impl VirtualWorkspace {
         }
     }
 
-    pub(crate) fn active_layout(&self) -> Option<LayoutId> { self.layout_state.active() }
+    pub(crate) fn active_layout(&self) -> Option<LayoutId> {
+        self.layout_state.active()
+    }
 
     pub(crate) fn ensure_layout_for_size(&mut self, size: CGSize) {
         self.layout_state.ensure_active(size, &mut self.layout_system);
@@ -229,7 +231,9 @@ impl VirtualWorkspace {
         layout
     }
 
-    pub fn layout_mode(&self) -> LayoutMode { self.layout_mode }
+    pub fn layout_mode(&self) -> LayoutMode {
+        self.layout_mode
+    }
 
     pub fn create_layout_system(mode: LayoutMode, settings: &LayoutSettings) -> LayoutSystemKind {
         match mode {
@@ -278,7 +282,9 @@ impl VirtualWorkspace {
         self.last_focused = window_id;
     }
 
-    pub fn last_focused(&self) -> Option<WindowId> { self.last_focused }
+    pub fn last_focused(&self) -> Option<WindowId> {
+        self.last_focused
+    }
 }
 
 /// Current ownership is never inferred from home intent. A departed display can
@@ -406,7 +412,9 @@ fn deserialize_workspace_order<'de, D: serde::Deserializer<'de>>(
 impl std::ops::Index<VirtualWorkspaceId> for WorkspaceStore {
     type Output = VirtualWorkspace;
 
-    fn index(&self, id: VirtualWorkspaceId) -> &Self::Output { &self.workspaces[id] }
+    fn index(&self, id: VirtualWorkspaceId) -> &Self::Output {
+        &self.workspaces[id]
+    }
 }
 
 impl std::ops::IndexMut<VirtualWorkspaceId> for WorkspaceStore {
@@ -416,7 +424,9 @@ impl std::ops::IndexMut<VirtualWorkspaceId> for WorkspaceStore {
 }
 
 impl Default for WorkspaceStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WorkspaceStore {
@@ -2158,11 +2168,14 @@ mod tests {
             .iter()
             .map(|w| manager.workspace_for_window(&window_store, new_space, *w))
             .collect();
-        assert_eq!(landed, vec![
-            Some(migrated[0]),
-            Some(migrated[1]),
-            Some(*migrated.last().unwrap())
-        ]);
+        assert_eq!(
+            landed,
+            vec![
+                Some(migrated[0]),
+                Some(migrated[1]),
+                Some(*migrated.last().unwrap())
+            ]
+        );
     }
 
     #[test]
@@ -2701,9 +2714,12 @@ mod tests {
         let right_neighbor = CGRect::new(CGPoint::new(100.0, 0.0), CGSize::new(100.0, 100.0));
         let frame = CGRect::new(CGPoint::new(20.0, 25.0), CGSize::new(30.0, 20.0));
 
-        let hidden = HiddenWindowPlacement::calculate(primary, frame, HideCorner::BottomRight, &[
-            right_neighbor,
-        ]);
+        let hidden = HiddenWindowPlacement::calculate(
+            primary,
+            frame,
+            HideCorner::BottomRight,
+            &[right_neighbor],
+        );
 
         assert_eq!(hidden.origin.y, primary.max().y - 1.0);
         assert_eq!(hidden.origin.x, primary.origin.x - frame.size.width + 1.0);

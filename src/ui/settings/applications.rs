@@ -58,7 +58,9 @@ impl Inventory {
     }
 
     #[cfg(test)]
-    pub fn len(&self) -> usize { self.choices.len() }
+    pub fn len(&self) -> usize {
+        self.choices.len()
+    }
 
     pub fn name_for_bundle(&self, bundle_id: &str) -> Option<&str> {
         self.by_bundle.get(bundle_id).map(|choice| choice.name.as_str())

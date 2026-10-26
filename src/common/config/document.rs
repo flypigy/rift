@@ -22,7 +22,9 @@ impl Default for ConfigDocument {
 }
 
 impl std::fmt::Display for ConfigDocument {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.document.fmt(f) }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.document.fmt(f)
+    }
 }
 
 /// A validated edit that has not been committed yet.
@@ -33,7 +35,9 @@ pub struct Edited {
 }
 
 impl ConfigDocument {
-    pub fn parse(text: &str) -> anyhow::Result<Self> { Ok(Self::load(text)?.0) }
+    pub fn parse(text: &str) -> anyhow::Result<Self> {
+        Ok(Self::load(text)?.0)
+    }
 
     /// Parse and validate once, returning the runtime config alongside the document.
     pub fn load(text: &str) -> anyhow::Result<(Self, Config)> {
@@ -49,7 +53,9 @@ impl ConfigDocument {
         Ok(parse_config_file(&self.to_string())?)
     }
 
-    pub fn runtime(&self) -> anyhow::Result<Config> { Config::parse(&self.to_string()) }
+    pub fn runtime(&self) -> anyhow::Result<Config> {
+        Config::parse(&self.to_string())
+    }
 
     /// Generate from typed source using the handwritten default as the style template.
     #[cfg(test)]

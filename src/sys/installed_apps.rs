@@ -81,9 +81,12 @@ mod tests {
         let mut apps = Vec::new();
         objc2::rc::autoreleasepool(|_| scan(root.path(), 4, &mut apps));
         apps.sort();
-        assert_eq!(apps, [
-            ("Friendly App".into(), "dev.example.app".into()),
-            ("Utility".into(), "dev.example.utility".into())
-        ]);
+        assert_eq!(
+            apps,
+            [
+                ("Friendly App".into(), "dev.example.app".into()),
+                ("Utility".into(), "dev.example.utility".into())
+            ]
+        );
     }
 }
