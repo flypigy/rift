@@ -1,3 +1,20 @@
+use cgs::app::Application;
+use cgs::collection::{EditableList, SettingsList};
+use cgs::controls::{
+    AddRemoveControl, Button, Checkbox, IconButton, NumberField, Popup, SheetActions,
+};
+use cgs::image::Image;
+use cgs::input::{SearchField, TextField};
+use cgs::layout::{
+    Disclosure, Divider, GroupBox, HStack, ScrollView, Spacer, VStack, uniform_insets,
+};
+use cgs::menu::{Menu, MenuItem};
+use cgs::navigation::HeaderControls;
+use cgs::settings::{Section, SettingsPage, SettingsRow, Validation, ValidationMessage};
+use cgs::text::{Caption, Label, SectionTitle};
+use cgs::view::{Metrics, NativeControl, NativeView, PageHost, WeakView};
+use cgs::window::{Popover, Sheet};
+use cgs::{CGPoint, Insets, Ui};
 use objc2_app_kit::NSAccessibility;
 
 use super::pages::{layouts, optional_number};
@@ -1140,6 +1157,17 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
     ));
     let app_name = Rc::new(RefCell::new(None::<String>));
     let selected_name = app_name.clone();
+    // Optional matchers let a second rule for the same app coexist with an existing bare one.
+    let title_input = Rc::new(TextField::new(&ui).placeholder("Window title contains"));
+    let role_input = Rc::new(TextField::new(&ui).placeholder("Accessibility role, e.g. AXWindow"));
+    let matchers = Rc::new(Disclosure::new(
+        &ui,
+        "Only match specific windows",
+        VStack::new(&ui).spacing(8.0).push(title_input.clone()).push(role_input.clone()),
+    ));
+    let weak_matchers = Rc::downgrade(&matchers);
+    let weak_title = Rc::downgrade(&title_input);
+    let weak_role = Rc::downgrade(&role_input);
     let weak_model = Rc::downgrade(model);
     let weak_input = Rc::downgrade(&input);
     cancel.set_primary_title("Add Rule");
@@ -1148,6 +1176,14 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
             return;
         };
         let value = input.get_value();
+        let optional = |field: &Weak<TextField>| {
+            field
+                .upgrade()
+                .map(|field| field.get_value().trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        let title_substring = optional(&weak_title);
+        let ax_role = optional(&weak_role);
         let name = if value.trim().is_empty() {
             selected_name.borrow().clone()
         } else {
@@ -1171,6 +1207,7 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
         };
         let weak = Rc::downgrade(&model);
         let message = input_error.clone();
+        let matchers = weak_matchers.clone();
         let next = edit_rule.clone();
         let _ = model.env.requests.send(Request {
             control: None,
@@ -1178,6 +1215,8 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
                 source.virtual_workspaces.app_rules.push(AppWorkspaceRule {
                     app_id: (!value.trim().is_empty()).then(|| value.trim().to_string()),
                     app_name: name,
+                    title_substring,
+                    ax_role,
                     ..Default::default()
                 });
                 Ok(())
@@ -1201,6 +1240,12 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
                             }
                         }
                         Err(error) => {
+                            // A duplicate is resolved by narrowing the new rule, so reveal the matchers.
+                            if error.contains("matches the same windows as rule")
+                                && let Some(matchers) = matchers.upgrade()
+                            {
+                                matchers.set_expanded(true);
+                            }
                             if let Some(message) = message.upgrade() {
                                 message.set_validation(&Validation::Error(error));
                             }
@@ -1239,6 +1284,7 @@ fn add_rule(ui: Ui, model: &Rc<Model>, edit_rule: Rc<dyn Fn(usize)>) {
         ))
         .push(picker)
         .push(Disclosure::new(&ui, "Enter a bundle identifier manually", input))
+        .push(matchers)
         .push(validation)
         .push(cancel);
     // The sheet fits its content; give the application list room to read.
@@ -1267,6 +1313,220 @@ fn rule_summary(r: &AppWorkspaceRule) -> String {
         .cloned()
         .unwrap_or("Rule".into())
 }
+/// Keep the long private-tag catalog out of the rule form.
+fn window_tag_picker(f: &mut FormBuilder, model: &Rc<Model>, i: usize) -> SettingsRow {
+    let ui = f.ui;
+    let message = Rc::new(ValidationMessage::new(&ui));
+    let summary = Rc::new(Label::new(&ui, "").truncating());
+    let selected_count = Rc::new(Caption::single_line(&ui, ""));
+    let weak_count = Rc::downgrade(&selected_count);
+    let weak_summary = Rc::downgrade(&summary);
+    f.sync.push(Box::new(move |source| {
+        if let Some(summary) = weak_summary.upgrade() {
+            let bits = source
+                .virtual_workspaces
+                .app_rules
+                .get(i)
+                .and_then(|r| r.window_tags)
+                .unwrap_or(0);
+            let names: Vec<_> = crate::sys::skylight::SLSWindowTags::from_bits_retain(bits)
+                .iter_names()
+                .map(|(name, _)| tag_label(name))
+                .collect();
+            if let Some(count) = weak_count.upgrade() {
+                count.set_text(&format!("{} selected", bits.count_ones()));
+            }
+            let text = match names.len() {
+                0 => "Not configured".to_string(),
+                1..=2 => names.join(", "),
+                count => format!("{}, {} +{}", names[0], names[1], count - 2),
+            };
+            summary.set_text(&text);
+            summary.tooltip(&names.join(", "));
+        }
+    }));
+    let mut catalog: Vec<_> = crate::sys::skylight::SLSWindowTags::all()
+        .iter_names()
+        .filter(|(_, tag)| tag.bits() <= i64::MAX as u64)
+        .collect();
+    // Alphabetical order avoids presenting particular private flags as recommendations.
+    catalog.sort_by_key(|(name, _)| tag_label(name));
+    let mut rows = VStack::new(&ui).spacing(0.0);
+    let mut filters = Vec::new();
+    for (name, tag) in catalog {
+        let mask = tag.bits();
+        let label = tag_label(name);
+        let get = move |s: &ConfigSource| {
+            s.virtual_workspaces
+                .app_rules
+                .get(i)
+                .and_then(|r| r.window_tags)
+                .is_some_and(|bits| bits & mask != 0)
+        };
+        let change = f.assign(
+            get,
+            move |s, checked| {
+                if let Some(rule) = s.virtual_workspaces.app_rules.get_mut(i) {
+                    let bits = rule.window_tags.unwrap_or(0);
+                    let bits = if checked { bits | mask } else { bits & !mask };
+                    rule.window_tags = (bits != 0).then_some(bits);
+                }
+            },
+            Rc::downgrade(&message),
+        );
+        let checkbox = Rc::new(Checkbox::new(&ui, &label).on_change(change));
+        checkbox.ns_button().setFont(Some(&cgs::style::Font::caption()));
+        checkbox.tooltip(&format!("{name} · bit {}", mask.trailing_zeros()));
+        f.sync_when(&checkbox, get, move |input, source| input.set_value(get(source)));
+        let bit = Caption::single_line(&ui, &format!("Bit {}", mask.trailing_zeros()));
+        bit.width(40.0);
+        let row = Rc::new(
+            HStack::new(&ui)
+                .insets(Insets {
+                    top: 6.0,
+                    bottom: 6.0,
+                    left: 10.0,
+                    right: 10.0,
+                })
+                .push(checkbox)
+                .spacer(&ui)
+                .push(bit),
+        );
+        filters.push((
+            format!("{label} {name} bit {}", mask.trailing_zeros()).to_lowercase(),
+            Rc::downgrade(&row),
+        ));
+        rows = rows.push(row);
+    }
+    let empty = Rc::new(Caption::new(&ui, "No matching tags"));
+    empty.set_hidden(true);
+    let empty_search = empty.clone();
+    let search = SearchField::new(&ui).placeholder("Search raw tags").on_change(move |query| {
+        let query = query.trim().to_lowercase();
+        let mut visible = 0;
+        for (name, view) in &filters {
+            if let Some(view) = view.upgrade() {
+                let matches = name.contains(&query);
+                view.set_hidden(!matches);
+                visible += usize::from(matches);
+            }
+        }
+        empty_search.set_hidden(visible != 0);
+    });
+    let scroll = ScrollView::new(&ui, rows.push(empty));
+    scroll.fit_width();
+    scroll.height(252.0);
+    let raw = Section::new(&ui, "").row(f.text(
+        "Tag bitmask (decimal)",
+        move |s| {
+            s.virtual_workspaces
+                .app_rules
+                .get(i)
+                .and_then(|r| r.window_tags)
+                .map(|v| v.to_string())
+                .unwrap_or_default()
+        },
+        move |s, v| {
+            let mask = if v.trim().is_empty() {
+                None
+            } else {
+                let mask =
+                    v.trim().parse::<u64>().map_err(|_| "Enter a positive integer bitmask")?;
+                if mask == 0 || mask > i64::MAX as u64 {
+                    return Err("Enter a mask from 1 to 9223372036854775807, or leave blank".into());
+                }
+                Some(mask)
+            };
+            let rule = s.virtual_workspaces.app_rules.get_mut(i).ok_or("Rule no longer exists")?;
+            rule.window_tags = mask;
+            Ok(())
+        },
+    ));
+
+    let weak = Rc::downgrade(model);
+    let error = Rc::downgrade(&message);
+    let clear = Button::new(&ui, "Clear selection").borderless().on_click(move || {
+        Model::submit(
+            &weak,
+            Box::new(move |source| {
+                let rule = source
+                    .virtual_workspaces
+                    .app_rules
+                    .get_mut(i)
+                    .ok_or("Rule no longer exists")?;
+                rule.window_tags = None;
+                Ok(())
+            }),
+            error.clone(),
+        );
+    });
+    let dismissal = Rc::new(RefCell::new(Weak::<Popover>::new()));
+    let dismiss = dismissal.clone();
+    let done = Button::new(&ui, "Done").on_click(move || {
+        if let Some(popover) = dismiss.borrow().upgrade() {
+            popover.close();
+        }
+    });
+    let heading = HStack::new(&ui)
+        .push(SectionTitle::new(&ui, "Raw window tags"))
+        .spacer(&ui)
+        .push(Caption::single_line(&ui, "Advanced use"));
+    let warning = GroupBox::with_insets(
+        &ui,
+        Caption::new(
+            &ui,
+            "Low-level WindowServer flags can match unexpectedly and vary across apps and macOS versions. Use application or title matching for normal rules.",
+        ),
+        uniform_insets(10.0),
+    );
+    let list_header = HStack::new(&ui)
+        .push(Caption::single_line(&ui, "Required tags"))
+        .spacer(&ui)
+        .push(selected_count);
+    let footer = HStack::new(&ui).push(clear).spacer(&ui).push(done);
+    let content = VStack::new(&ui)
+        .spacing(10.0)
+        .insets(uniform_insets(16.0))
+        .push(heading)
+        .push(warning)
+        .push(search)
+        .push(list_header)
+        .push(GroupBox::with_insets(&ui, scroll, uniform_insets(0.0)))
+        .push(Caption::new(
+            &ui,
+            "All selected bits must be present. Other bits are allowed.",
+        ))
+        .push(Disclosure::new(&ui, "Custom bitmask", raw).compact())
+        .push(message.clone())
+        .push(Divider::new(&ui))
+        .push(footer);
+    content.width(440.0);
+    let popover = Rc::new(Popover::new(&ui, content));
+    *dismissal.borrow_mut() = Rc::downgrade(&popover);
+    let button = Button::new(&ui, "Configure…");
+    let anchor = WeakView::new(&button);
+    let button = button.on_click(move || {
+        if let Some(view) = anchor.load() {
+            popover.show(&view);
+        }
+    });
+    SettingsRow::new(
+        &ui,
+        "Raw window tags",
+        HStack::new(&ui).push(summary).spacer(&ui).push(button),
+    )
+    .description("Advanced use only. Low-level WindowServer flags can match unexpectedly.")
+}
+
+fn tag_label(name: &str) -> String {
+    let label = name.to_lowercase().replace('_', " ");
+    let mut chars = label.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default()
+}
+
 fn rule_detail(ui: Ui, model: &Rc<Model>, i: usize) -> Page {
     let mut f = FormBuilder::new(ui, model);
     let mut matches = Section::new(&ui, "Matching conditions")
@@ -1360,6 +1620,7 @@ fn rule_detail(ui: Ui, model: &Rc<Model>, i: usize) -> Page {
             advanced = advanced.row(row);
         }
     }
+    advanced = advanced.row(window_tag_picker(&mut f, model, i));
     matches = matches.content(Disclosure::new(&ui, "Advanced matching", advanced));
     let workspace = workspace_popup(
         &mut f,
@@ -2006,7 +2267,7 @@ pub(super) fn field_group(ui: &Ui, unit: &str, fields: Vec<(&str, Rc<NumberField
             .alignment(objc2_app_kit::NSLayoutAttribute::FirstBaseline),
         |row, (name, field)| {
             let value = field.unit_field(ui, unit);
-            value.width(56.0);
+            field.width(cgs::view::Metrics::VALUE_FIELD_WIDTH);
             row.push(
                 VStack::new(ui)
                     .spacing(3.0)

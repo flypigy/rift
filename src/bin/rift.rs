@@ -180,7 +180,7 @@ Enable it in System Settings > Desktop & Dock (Mission Control) and restart Rift
 
     if opt.validate {
         let path = restore_file();
-        match LayoutEngine::load(path.clone()) {
+        match LayoutEngine::validate_file(path.clone()) {
             Ok(_) => println!("Master file is valid: {}", path.display()),
             Err(error) => {
                 eprintln!("Could not load master file at {}: {error}", path.display());
@@ -362,11 +362,13 @@ Enable it in System Settings > Desktop & Dock (Mission Control) and restart Rift
     let mission_control = mc_channel.map(|(tx, rx)| {
         MissionControlActor::new(
             config.settings.ui.mission_control.clone(),
+            config.virtual_workspaces.mode == rift_wm::common::config::WorkspaceMode::Global,
             rx,
             tx,
             reactor.clone(),
             mtm,
             input_tx.clone(),
+            stack_line_tx.clone(),
         )
     });
     let mission_control_native = NativeMissionControl::new(events_tx.clone(), mc_native_rx);

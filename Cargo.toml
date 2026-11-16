@@ -1,6 +1,6 @@
 [package]
 name = "rift-wm"
-version = "0.7.1"
+version = "0.8.2"
 edition = "2024"
 build = "build.rs"
 
@@ -22,6 +22,15 @@ debug-assertions = true
 overflow-checks = true
 split-debuginfo = "unpacked"
 panic = "unwind"
+
+# Keep native dispatch fast during ordinary cargo run. Signature validation walks
+# Objective-C metadata on every message; application debug assertions stay enabled.
+[profile.dev.package.objc2]
+opt-level = 2
+debug-assertions = false
+
+[profile.dev.package.cgs]
+opt-level = 2
 
 [profile.release]
 opt-level = 3
@@ -56,7 +65,7 @@ disable-axuielement-destroyed = []
 
 [dependencies]
 rift-config-derive = { path = "crates/rift-config-derive" }
-cgs = { version = "0.3.15" }#, path = "cgs" }
+cgs = { version = "0.5.2" }#, path = "cgs" }
 anyhow = { version = "1.0.83", default-features = false }
 ascii_tree = "0.1.1"
 thiserror = { version = "2.0.17", default-features = false }
@@ -147,6 +156,8 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
 ]}
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
 	"CAAnimation",
+	"CAMediaTiming",
+	"CATransform3D",
 	"CADisplayLink",
 	"CAFrameRateRange",
 	"CABase",

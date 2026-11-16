@@ -4,9 +4,10 @@ use std::cell::{Cell, RefCell};
 use std::panic::AssertUnwindSafe;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::time::Duration;
 
+use objc2_app_kit::{NSEvent, NSEventType, NSWorkspace};
 use objc2_core_foundation::{CGPoint, CGRect};
 use objc2_core_graphics::{
     CGDisplayBounds, CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventSource,
@@ -55,8 +56,35 @@ pub enum Request {
     /// Complete gesture routes for visible spaces with Rift management enabled.
     LayoutModesChanged(Vec<(SpaceId, crate::common::config::LayoutMode)>),
     SetLowPowerMode(bool),
-    SetMissionControlActive(bool),
+    SetMissionControlActive(bool, Vec<CGRect>),
     ReleaseMissionControl,
+}
+
+// The IPC acknowledgement is sent only after this store. The input tap therefore
+// sees the lease before Settings starts accepting a recorded key. Only foreground
+// keys bypass bindings; a crashed or background recorder cannot disable hotkeys.
+static SHORTCUT_RECORDER: AtomicI32 = AtomicI32::new(0);
+
+pub(crate) fn set_shortcut_recording(pid: i32, recording: bool) {
+    if recording && pid > 0 {
+        SHORTCUT_RECORDER.store(pid, Ordering::Release);
+    } else {
+        let _ = SHORTCUT_RECORDER.compare_exchange(pid, 0, Ordering::AcqRel, Ordering::Acquire);
+    }
+}
+
+fn shortcut_recorder_is_frontmost() -> bool {
+    let pid = SHORTCUT_RECORDER.load(Ordering::Acquire);
+    pid > 0
+        && NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .is_some_and(|app| app.processIdentifier() == pid)
+}
+
+#[derive(Clone, Copy)]
+struct OverviewHotkey {
+    trigger: Option<KeyCode>,
+    flags: CGEventFlags,
 }
 
 pub struct Input {
@@ -65,6 +93,10 @@ pub struct Input {
     state: RefCell<State>,
     event_mask: Cell<CGEventMask>,
     mission_control_active: Cell<bool>,
+    activate_on_hotkey_release: Cell<bool>,
+    overview_hotkey: Cell<Option<OverviewHotkey>>,
+    mission_control_bounds: RefCell<Vec<CGRect>>,
+    overview_buttons: Cell<u8>,
     mouse_move_last_timestamp: Cell<Option<u64>>,
     mouse_move_min_interval_ticks: Cell<u64>,
     mouse_location: Cell<CGPoint>,
@@ -167,7 +199,9 @@ impl Input {
             disable_hotkey.as_ref().is_some_and(|key| !is_modifier_key(key.key_code));
         let hotkeys_enabled = self.hotkeys.borrow().iter().any(|map| !map.is_empty());
         let mut mask = build_event_mask(
-            hotkeys_enabled || keyed_disable || self.mission_control_active.get(),
+            // Keyboard launchers must end wake/unlock activation suppression
+            // even when no Rift keyboard bindings are configured.
+            true,
             hotkeys_enabled || disable_hotkey.is_some(),
             (state.event_processing_enabled
                 && (state.mouse_hides_on_focus
@@ -180,7 +214,7 @@ impl Input {
             // start/stop is frequent enough that rebuilding the WindowServer
             // tap costs more than filtering these releases in the callback.
             state.event_processing_enabled,
-            keyed_disable,
+            keyed_disable || (self.activate_on_hotkey_release.get() && hotkeys_enabled),
         );
         if self.mission_control_active.get() {
             mask |= (1u64 << CGEventType::LeftMouseDown.0)
@@ -205,7 +239,7 @@ impl Input {
             mask |= (1u64 << CGEventType::LeftMouseDragged.0)
                 | (1u64 << CGEventType::RightMouseDragged.0);
         }
-        if state.gesture_settings.enabled() {
+        if state.gesture_settings.enabled() || self.mission_control_active.get() {
             mask |= gesture::EVENT_MASK;
         }
         mask
@@ -317,6 +351,12 @@ impl Input {
             state: RefCell::new(state),
             event_mask: Cell::new(0),
             mission_control_active: Cell::new(false),
+            activate_on_hotkey_release: Cell::new(
+                config.settings.ui.mission_control.activate_on_hotkey_release,
+            ),
+            overview_hotkey: Cell::new(None),
+            mission_control_bounds: RefCell::new(Vec::new()),
+            overview_buttons: Cell::new(0),
             mouse_move_last_timestamp: Cell::new(None),
             mouse_move_min_interval_ticks: Cell::new(mouse_move_min_interval_ticks),
             mouse_location: Cell::new(CGPoint::new(0.0, 0.0)),
@@ -425,7 +465,7 @@ impl Input {
             Request::SetEventProcessing(enabled) => {
                 *enabled != self.state.borrow().event_processing_enabled
             }
-            Request::SetMissionControlActive(active) => {
+            Request::SetMissionControlActive(active, _) => {
                 *active != self.mission_control_active.get()
             }
             Request::ConfigUpdated(_) | Request::ReleaseMissionControl => true,
@@ -440,12 +480,28 @@ impl Input {
         let mut state = self.state.borrow_mut();
         match request {
             Request::ReleaseMissionControl => {
+                self.overview_hotkey.set(None);
                 self.mission_control_tx.borrow_mut().take();
                 self.mission_control_active.set(false);
+                self.mission_control_bounds.borrow_mut().clear();
+                self.overview_buttons.set(0);
                 should_rebuild_mask = true;
             }
-            Request::SetMissionControlActive(active) => {
+            Request::SetMissionControlActive(active, bounds) => {
+                if *self.mission_control_bounds.borrow() != bounds {
+                    self.overview_buttons.set(0);
+                }
+                *self.mission_control_bounds.borrow_mut() = bounds;
+                if !active {
+                    self.overview_buttons.set(0);
+                }
                 self.mission_control_active.set(active);
+                if active {
+                    // Key releases can precede this asynchronous open acknowledgement.
+                    self.finish_overview_hotkey();
+                } else {
+                    self.overview_hotkey.set(None);
+                }
                 self.reset_mouse_move_sample_gate();
                 if active && state.hide_count > 0 {
                     state.show_mouse();
@@ -531,6 +587,9 @@ impl Input {
                 }
             }
             Request::ConfigUpdated(new_config) => {
+                self.activate_on_hotkey_release
+                    .set(new_config.settings.ui.mission_control.activate_on_hotkey_release);
+                self.overview_hotkey.set(None);
                 if *self.binding_mode_specs.borrow() != new_config.binding_mode_specs {
                     self.install_binding_specs(new_config.binding_mode_specs.clone());
                 }
@@ -649,6 +708,8 @@ impl Input {
     }
 
     fn reconcile_after_tap_reenabled(&self) {
+        // A release may have been lost; do not activate from a later unrelated event.
+        self.overview_hotkey.set(None);
         let mut state = self.state.borrow_mut();
         self.reset_gestures();
         if state.captured_button.take().is_some() {
@@ -661,18 +722,105 @@ impl Input {
         self.refresh_disable_hotkey_state(&mut self.state.borrow_mut());
     }
 
+    fn overview_contains(&self, point: CGPoint) -> bool {
+        self.mission_control_bounds.borrow().iter().any(|r| {
+            point.x >= r.min().x
+                && point.y >= r.min().y
+                && point.x < r.max().x
+                && point.y < r.max().y
+        })
+    }
+
     fn on_event(
         &self,
         event_type: CGEventType,
         event: &CGEvent,
         proxy: Option<CGEventTapProxy>,
     ) -> bool {
+        if self.mission_control_active.get()
+            && matches!(
+                event_type,
+                CGEventType::LeftMouseDown
+                    | CGEventType::LeftMouseUp
+                    | CGEventType::LeftMouseDragged
+                    | CGEventType::RightMouseDown
+                    | CGEventType::RightMouseUp
+                    | CGEventType::RightMouseDragged
+                    | CGEventType::MouseMoved
+                    | CGEventType::ScrollWheel
+            )
+        {
+            let point = CGEvent::location(Some(event));
+            let inside = self.overview_contains(point);
+            let (down, up) = match event_type {
+                CGEventType::LeftMouseDown => (1, 0),
+                CGEventType::RightMouseDown => (2, 0),
+                CGEventType::LeftMouseUp => (0, 1),
+                CGEventType::RightMouseUp => (0, 2),
+                _ => (0, 0),
+            };
+            let captured = self.overview_buttons.get() != 0
+                && matches!(
+                    event_type,
+                    CGEventType::LeftMouseDragged
+                        | CGEventType::RightMouseDragged
+                        | CGEventType::LeftMouseUp
+                        | CGEventType::RightMouseUp
+                );
+            if !inside && !captured {
+                if down != 0 {
+                    self.send_overview(super::mission_control::Event::Dismiss);
+                } else if event_type == CGEventType::MouseMoved {
+                    self.send_overview(super::mission_control::Event::Input(
+                        super::mission_control::Input::Move(point),
+                    ));
+                }
+                return true;
+            }
+            self.overview_buttons.set((self.overview_buttons.get() | down) & !up);
+        }
         match event_type {
             ty if ty.0 == gesture::CGS_EVENT_GESTURE || ty.0 == gesture::CGS_EVENT_DOCK_CONTROL => {
-                self.native_gesture_forward(ty, event, proxy)
+                if self.mission_control_active.get() {
+                    if !self.overview_contains(CGEvent::location(Some(event))) {
+                        return true;
+                    }
+                    if ty.0 == gesture::CGS_EVENT_GESTURE
+                        && let Some(native) = NSEvent::eventWithCGEvent(event)
+                    {
+                        let point = CGEvent::location(Some(event));
+                        let input = match native.r#type() {
+                            NSEventType::Magnify => {
+                                let factor = 1. + native.magnification();
+                                (factor.is_finite() && factor > 0.).then_some(
+                                    super::mission_control::Input::Magnify { point, factor },
+                                )
+                            }
+                            NSEventType::SmartMagnify => {
+                                Some(super::mission_control::Input::Click(point))
+                            }
+                            _ => None,
+                        };
+                        if let Some(input) = input {
+                            self.send_overview(super::mission_control::Event::Input(input));
+                        }
+                    }
+                    false
+                } else {
+                    self.native_gesture_forward(ty, event, proxy)
+                }
             }
             CGEventType::KeyDown | CGEventType::KeyUp | CGEventType::FlagsChanged => {
                 if event::is_rift_synthetic_event(event) {
+                    return true;
+                }
+                if event_type == CGEventType::KeyDown {
+                    self.events_tx.send(Event::KeyboardInput);
+                }
+                if shortcut_recorder_is_frontmost() {
+                    self.state
+                        .borrow_mut()
+                        .reconcile_after_event_tap_reenabled(CGEvent::flags(Some(event)));
                     return true;
                 }
                 if event_type == CGEventType::KeyDown && self.mission_control_active.get() {
@@ -684,8 +832,32 @@ impl Input {
                         keycode,
                         CGEvent::flags(Some(event)),
                     ) {
-                        self.send_overview(super::mission_control::Event::Input(input));
-                        return false;
+                        let configured_hotkey =
+                            key_code_from_event(event).is_some_and(|key_code| {
+                                let state = self.state.borrow();
+                                let hotkey = Hotkey::new(
+                                    modifiers_from_flags_with_keys(
+                                        CGEvent::flags(Some(event)),
+                                        &state.pressed_keys,
+                                    ),
+                                    key_code,
+                                );
+                                self.hotkeys
+                                    .borrow()
+                                    .get(self.active_mode.get())
+                                    .is_some_and(|bindings| bindings.contains_key(&hotkey))
+                            });
+                        if !configured_hotkey {
+                            if matches!(
+                                input,
+                                super::mission_control::Input::Dismiss
+                                    | super::mission_control::Input::Activate
+                            ) {
+                                self.overview_hotkey.set(None);
+                            }
+                            self.send_overview(super::mission_control::Event::Input(input));
+                            return false;
+                        }
                     }
                 }
                 self.handle_keyboard_event(event_type, event, &mut self.state.borrow_mut())
@@ -708,18 +880,22 @@ impl Input {
                         16.0,
                     )
                 };
-                self.send_overview(super::mission_control::Event::Input(
-                    super::mission_control::Input::Scroll {
-                        point: CGEvent::location(Some(event)),
-                        delta: overview_scroll_delta(
-                            CGPoint::new(
-                                CGEvent::integer_value_field(Some(event), x) as f64 * scale,
-                                CGEvent::integer_value_field(Some(event), y) as f64 * scale,
-                            ),
-                            CGEvent::flags(Some(event)),
-                        ),
-                    },
-                ));
+                let flags = CGEvent::flags(Some(event));
+                let point = CGEvent::location(Some(event));
+                let delta = overview_scroll_delta(
+                    CGPoint::new(
+                        CGEvent::double_value_field(Some(event), x) * scale,
+                        CGEvent::double_value_field(Some(event), y) * scale,
+                    ),
+                    flags,
+                );
+                let input =
+                    if flags.intersects(CGEventFlags::MaskCommand | CGEventFlags::MaskControl) {
+                        super::mission_control::Input::Zoom { point, delta }
+                    } else {
+                        super::mission_control::Input::Scroll { point, delta }
+                    };
+                self.send_overview(super::mission_control::Event::Input(input));
                 false
             }
             CGEventType::ScrollWheel => self.native_gesture_forward(event_type, event, proxy),
@@ -736,16 +912,7 @@ impl Input {
                 }
                 if self.mission_control_active.get() {
                     self.send_overview(super::mission_control::Event::Input(
-                        super::mission_control::Input::Scroll {
-                            point: CGEvent::location(Some(event)),
-                            delta: CGPoint::new(
-                                CGEvent::integer_value_field(
-                                    Some(event),
-                                    CGEventField::MouseEventDeltaX,
-                                ) as f64,
-                                0.0,
-                            ),
-                        },
+                        super::mission_control::Input::Pan(CGEvent::location(Some(event))),
                     ));
                     CGEvent::set_type(Some(event), CGEventType::MouseMoved);
                     return true;
@@ -779,6 +946,9 @@ impl Input {
                     return false;
                 }
                 if self.mission_control_active.get() {
+                    self.send_overview(super::mission_control::Event::Input(
+                        super::mission_control::Input::BeginPan(CGEvent::location(Some(event))),
+                    ));
                     return false;
                 }
                 let button = if event_type == CGEventType::LeftMouseDown {
@@ -816,6 +986,9 @@ impl Input {
                     return false;
                 }
                 if self.mission_control_active.get() {
+                    self.send_overview(super::mission_control::Event::Input(
+                        super::mission_control::Input::EndPan(CGEvent::location(Some(event))),
+                    ));
                     return false;
                 }
                 let button = if event_type == CGEventType::LeftMouseUp {
@@ -824,15 +997,35 @@ impl Input {
                     crate::actor::drag::MouseButton::Right
                 };
                 let captured = self.state.borrow().captured_button == Some(button);
-                if self.state.borrow().mouse_features_enabled {
-                    self.events_tx.send(Event::MouseUp(button));
-                }
+                // Native AX moves/resizes acquire drag state even with drag/drop disabled.
+                // Always deliver releases so that state cannot keep layout writes blocked.
+                self.events_tx.send(Event::MouseUp(button));
                 if captured {
                     self.state.borrow_mut().captured_button = None;
                 }
                 !captured
             }
             _ => true,
+        }
+    }
+
+    fn finish_overview_hotkey(&self) {
+        let Some(hotkey) = self.overview_hotkey.get() else {
+            return;
+        };
+        let modifiers = CGEventFlags::MaskCommand
+            | CGEventFlags::MaskControl
+            | CGEventFlags::MaskAlternate
+            | CGEventFlags::MaskShift
+            | CGEventFlags::MaskSecondaryFn;
+        if self.mission_control_active.get()
+            && hotkey.trigger.is_none()
+            && !hotkey.flags.intersects(modifiers)
+        {
+            self.overview_hotkey.set(None);
+            self.send_overview(super::mission_control::Event::Input(
+                super::mission_control::Input::Activate,
+            ));
         }
     }
 
@@ -941,6 +1134,14 @@ impl Input {
         // rather than the previous event's modifier state.
         let flags = CGEvent::flags(Some(event));
         state.current_flags = flags;
+        if let Some(mut hotkey) = self.overview_hotkey.get() {
+            if event_type == CGEventType::KeyUp && hotkey.trigger == key_code_opt {
+                hotkey.trigger = None;
+            }
+            hotkey.flags = flags;
+            self.overview_hotkey.set(Some(hotkey));
+            self.finish_overview_hotkey();
+        }
 
         if let Some(key_code) = key_code_opt {
             match event_type {
@@ -982,7 +1183,32 @@ impl Input {
                     if is_repeat {
                         return false;
                     }
+                    if commands.iter().any(|cmd| {
+                        matches!(
+                            cmd,
+                            WmCommand::Wm(
+                                wm_controller::WmCmd::ShowMissionControlAll
+                                    | wm_controller::WmCmd::ShowMissionControlCurrent
+                            )
+                        )
+                    }) {
+                        self.overview_hotkey.set(
+                            (self.activate_on_hotkey_release.get()
+                                && !self.mission_control_active.get())
+                            .then_some(OverviewHotkey { trigger: Some(key_code), flags }),
+                        );
+                    } else if commands.iter().any(|cmd| {
+                        matches!(cmd, WmCommand::Wm(wm_controller::WmCmd::DismissMissionControl))
+                    }) {
+                        self.overview_hotkey.set(None);
+                    }
                     for cmd in commands {
+                        if self.mission_control_active.get()
+                            && let Some(input) = super::mission_control::Input::from_command(cmd)
+                        {
+                            self.send_overview(super::mission_control::Event::Input(input));
+                            continue;
+                        }
                         match cmd {
                             WmCommand::Wm(wm_controller::WmCmd::BindingMode(target)) => {
                                 self.transition_binding_mode(target);
@@ -1704,6 +1930,9 @@ mod tests {
             CGEventType::RightMouseDragged,
             CGEventType::RightMouseUp,
         ] {
+            if ty != CGEventType::RightMouseDown {
+                CGEvent::set_location(Some(&event), CGPoint::new(1200., 40.));
+            }
             assert_eq!(
                 input.on_event(ty, &event, None),
                 ty == CGEventType::RightMouseDragged
@@ -1712,16 +1941,22 @@ mod tests {
                 assert_eq!(CGEvent::r#type(Some(&event)), CGEventType::MouseMoved);
             }
         }
-        let (
-            _,
-            super::super::mission_control::Event::Input(
-                super::super::mission_control::Input::Scroll { delta, .. },
-            ),
-        ) = rx.try_recv().unwrap()
-        else {
-            panic!("horizontal Overview pan")
-        };
-        assert_eq!(delta, CGPoint::new(25.0, 0.0));
+        use super::super::mission_control::{Event as OverviewEvent, Input as OverviewInput};
+        for expected in [0, 1, 2] {
+            let OverviewEvent::Input(input) = rx.try_recv().unwrap().1 else {
+                panic!("pan input");
+            };
+            let point = match (expected, input) {
+                (0, OverviewInput::BeginPan(p))
+                | (1, OverviewInput::Pan(p))
+                | (2, OverviewInput::EndPan(p)) => p,
+                other => panic!("pan lost its native phase: {other:?}"),
+            };
+            // Native pointer position, rather than the unrelated raw device delta.
+            assert_eq!(point, CGPoint::new(if expected == 0 { 30. } else { 1200. }, 40.));
+        }
+        // Releasing outside the host ends capture; subsequent scrolling belongs to that desktop.
+        assert!(input.on_event(CGEventType::ScrollWheel, &event, None));
         assert!(rx.try_recv().is_err());
         assert!(native_rx.try_recv().is_err());
         assert!(wm_rx.try_recv().is_err());
@@ -1742,6 +1977,7 @@ mod tests {
             0,
         )
         .unwrap();
+        CGEvent::set_location(Some(&event), CGPoint::new(30., 40.));
         CGEvent::set_flags(Some(&event), CGEventFlags::MaskShift);
         assert!(!input.on_event(CGEventType::ScrollWheel, &event, None));
         assert!(
@@ -1785,6 +2021,14 @@ mod tests {
         };
         assert_eq!(point, CGPoint::new(30.0, 40.0));
         assert_eq!(delta, CGPoint::new(12.0, -60.0));
+        for flags in [CGEventFlags::MaskCommand, CGEventFlags::MaskControl] {
+            CGEvent::set_flags(Some(&event), flags);
+            assert!(!input.on_event(CGEventType::ScrollWheel, &event, None));
+            assert!(
+                matches!(rx.try_recv().unwrap().1,super::super::mission_control::Event::Input(super::super::mission_control::Input::Zoom{point,delta}) if point==CGPoint::new(30.,40.) && delta==CGPoint::new(12.,-60.))
+            );
+        }
+        CGEvent::set_flags(Some(&event), CGEventFlags::empty());
         input.mission_control_active.set(false);
         assert!(input.on_event(CGEventType::ScrollWheel, &event, None));
         assert!(rx.try_recv().is_err());
@@ -1817,34 +2061,36 @@ mod tests {
         config.settings.focus_follows_mouse = false;
         config.settings.focus_follows_mouse_disable_hotkey = None;
         config.settings.mouse_hides_on_focus = false;
-        (
-            Input::new(
-                config,
-                events_tx,
-                requests_rx,
-                wm_tx,
-                Some(mc_tx),
-                Arc::default(),
-            ),
-            wm_rx,
-            events_rx,
-        )
+        let input = Input::new(
+            config,
+            events_tx,
+            requests_rx,
+            wm_tx,
+            Some(mc_tx),
+            Arc::default(),
+        );
+        input.mission_control_bounds.borrow_mut().push(CGRect::new(
+            CGPoint::ZERO,
+            objc2_core_foundation::CGSize::new(1000., 1000.),
+        ));
+        (input, wm_rx, events_rx)
     }
 
     #[test]
     fn mask_tracks_mouse_feature_enablement() {
         let (input, _, _) = input();
         assert!(input.hotkeys.borrow().is_empty());
-        assert_eq!(input.desired_event_mask(), 0);
+        let keyboard_mask = 1u64 << CGEventType::KeyDown.0;
+        assert_eq!(input.desired_event_mask(), keyboard_mask);
         input.state.borrow_mut().mouse_features_enabled = false;
         input.state.borrow_mut().event_processing_enabled = true;
         let stable_release_mask =
             (1u64 << CGEventType::LeftMouseUp.0) | (1u64 << CGEventType::RightMouseUp.0);
-        assert_eq!(input.desired_event_mask(), stable_release_mask);
+        assert_eq!(input.desired_event_mask(), stable_release_mask | keyboard_mask);
         input.state.borrow_mut().focus_follows_mouse_config_enabled = true;
         assert_eq!(
             input.desired_event_mask(),
-            stable_release_mask | (1u64 << CGEventType::MouseMoved.0)
+            stable_release_mask | keyboard_mask | (1u64 << CGEventType::MouseMoved.0)
         );
         input.state.borrow_mut().mouse_settings.action2 = MouseAction::Move;
         input.state.borrow_mut().mouse_features_enabled = true;
@@ -1891,6 +2137,246 @@ mod tests {
         })
         .join()
         .unwrap();
+    }
+
+    #[test]
+    fn overview_hotkey_release_activates_once_after_all_keys_and_open_acknowledgement() {
+        use super::super::mission_control::{Event as OverviewEvent, Input as OverviewInput};
+        for enabled in [false, true] {
+            for release_before_open in [false, true] {
+                for modifiers_first in [false, true] {
+                    for modified in [false, true] {
+                        let mut config = Config::default();
+                        config.settings.ui.mission_control.activate_on_hotkey_release = enabled;
+                        config.settings.gestures.enabled = false;
+                        config.settings.layout.scrolling.gestures.enabled = false;
+                        config.settings.focus_follows_mouse = false;
+                        config.settings.focus_follows_mouse_disable_hotkey = None;
+                        config.settings.mouse_hides_on_focus = false;
+                        let (events, _) = actor::channel();
+                        let (_, requests) = actor::channel();
+                        let (wm, mut wm_rx) = actor::channel();
+                        let (overview, mut overview_rx) = actor::channel();
+                        config.binding_mode_specs = vec![(
+                            "default".into(),
+                            vec![(
+                                if modified {
+                                    "Alt + Ctrl + A".into()
+                                } else {
+                                    "A".into()
+                                },
+                                WmCommand::Wm(wm_controller::WmCmd::ShowMissionControlAll),
+                            )],
+                        )];
+                        let input = Input::new(
+                            config,
+                            events,
+                            requests,
+                            wm,
+                            Some(overview),
+                            Arc::default(),
+                        );
+                        input.hotkeys_active.set(true);
+                        input.rebuild_binding_maps();
+                        assert_eq!(
+                            input.desired_event_mask() & (1u64 << CGEventType::KeyUp.0) != 0,
+                            enabled
+                        );
+                        let flags = if modified {
+                            CGEventFlags::MaskAlternate | CGEventFlags::MaskControl
+                        } else {
+                            CGEventFlags::empty()
+                        };
+                        let key = CGEvent::new_keyboard_event(None, 0, true).unwrap();
+                        CGEvent::set_flags(Some(&key), flags);
+                        assert!(!input.on_event(CGEventType::KeyDown, &key, None));
+                        assert!(matches!(
+                            wm_rx.try_recv().unwrap().1,
+                            WmEvent::Command(WmCommand::Wm(
+                                wm_controller::WmCmd::ShowMissionControlAll
+                            ))
+                        ));
+                        assert!(overview_rx.try_recv().is_err());
+                        let (recovery, _) = tokio::sync::mpsc::unbounded_channel();
+                        if !release_before_open {
+                            input.on_request(
+                                Request::SetMissionControlActive(true, Vec::new()),
+                                &recovery,
+                            );
+                        }
+                        // Caps Lock is not a held modifier and must not prevent activation.
+                        let caps = CGEventFlags::MaskAlphaShift;
+                        let modifier = CGEvent::new_keyboard_event(None, 58, false).unwrap();
+                        if modified && modifiers_first {
+                            CGEvent::set_flags(Some(&modifier), CGEventFlags::MaskControl | caps);
+                            input.on_event(CGEventType::FlagsChanged, &modifier, None);
+                            assert!(overview_rx.try_recv().is_err());
+                            CGEvent::set_flags(Some(&modifier), caps);
+                            input.on_event(CGEventType::FlagsChanged, &modifier, None);
+                            assert!(overview_rx.try_recv().is_err());
+                        }
+                        CGEvent::set_flags(
+                            Some(&key),
+                            if modified && !modifiers_first {
+                                flags | caps
+                            } else {
+                                caps
+                            },
+                        );
+                        input.on_event(CGEventType::KeyUp, &key, None);
+                        if modified && !modifiers_first {
+                            assert!(overview_rx.try_recv().is_err());
+                            CGEvent::set_flags(Some(&modifier), CGEventFlags::MaskControl | caps);
+                            input.on_event(CGEventType::FlagsChanged, &modifier, None);
+                            assert!(overview_rx.try_recv().is_err());
+                            CGEvent::set_flags(Some(&modifier), caps);
+                            input.on_event(CGEventType::FlagsChanged, &modifier, None);
+                        }
+                        if release_before_open {
+                            assert!(overview_rx.try_recv().is_err());
+                            input.on_request(
+                                Request::SetMissionControlActive(true, Vec::new()),
+                                &recovery,
+                            );
+                        }
+                        if enabled {
+                            assert!(matches!(
+                                overview_rx
+                                    .try_recv()
+                                    .expect("released overview hotkey must activate its selection")
+                                    .1,
+                                OverviewEvent::Input(OverviewInput::Activate)
+                            ));
+                        }
+                        assert!(overview_rx.try_recv().is_err());
+                        input.on_event(CGEventType::KeyUp, &key, None);
+                        input.on_event(CGEventType::FlagsChanged, &modifier, None);
+                        assert!(
+                            overview_rx.try_recv().is_err(),
+                            "activation must happen at most once"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn configured_overview_actions_use_selected_mode_without_desktop_dispatch() {
+        use super::super::mission_control::{Event as OverviewEvent, Input as OverviewInput};
+        use crate::common::config::WorkspaceSelector;
+        use crate::layout_engine::{Direction, LayoutCommand};
+        let commands = [
+            WmCommand::ReactorCommand(super::super::reactor::Command::Layout(
+                LayoutCommand::MoveFocus(Direction::Left),
+            )),
+            WmCommand::ReactorCommand(super::super::reactor::Command::Layout(
+                LayoutCommand::MoveNode(Direction::Right),
+            )),
+            WmCommand::Wm(wm_controller::WmCmd::MoveWindowToWorkspace(
+                WorkspaceSelector::Index(1),
+            )),
+            WmCommand::Wm(wm_controller::WmCmd::SwitchToWorkspace(
+                WorkspaceSelector::Index(1),
+            )),
+        ];
+        for (index, command) in commands.into_iter().enumerate() {
+            let (input, mut wm_rx, mut events_rx) = input();
+            let (overview, mut rx) = actor::channel();
+            *input.mission_control_tx.borrow_mut() = Some(overview);
+            input.mission_control_active.set(true);
+            input.hotkeys_active.set(true);
+            input.active_mode.set(1);
+            *input.hotkeys.borrow_mut() = vec![
+                HashMap::default(),
+                HashMap::from_iter([(
+                    Hotkey::new(Modifiers::ALT_LEFT, KeyCode::KeyA),
+                    vec![command],
+                )]),
+            ];
+            let key = CGEvent::new_keyboard_event(None, 0, true).unwrap();
+            CGEvent::set_flags(Some(&key), CGEventFlags::MaskAlternate);
+            assert!(!input.on_event(CGEventType::KeyDown, &key, None));
+            match (index, rx.try_recv().unwrap().1) {
+                (0, OverviewEvent::Input(OverviewInput::Left))
+                | (1, OverviewEvent::Input(OverviewInput::MoveNode(Direction::Right)))
+                | (
+                    2,
+                    OverviewEvent::Input(OverviewInput::MoveToWorkspace(
+                        WorkspaceSelector::Index(1),
+                        false,
+                    )),
+                )
+                | (
+                    3,
+                    OverviewEvent::Input(OverviewInput::SwitchWorkspace(WorkspaceSelector::Index(
+                        1,
+                    ))),
+                ) => {}
+                unexpected => panic!("unexpected overview action: {unexpected:?}"),
+            }
+            assert!(wm_rx.try_recv().is_err());
+            assert!(matches!(events_rx.try_recv().unwrap().1, Event::KeyboardInput));
+            assert!(events_rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn explicit_overview_actions_cancel_pending_hotkey_release_activation() {
+        use super::super::mission_control::{Event as OverviewEvent, Input as OverviewInput};
+        for (code, activate) in [(53, false), (36, true)] {
+            let (input, _, _) = input();
+            let (overview, mut rx) = actor::channel();
+            *input.mission_control_tx.borrow_mut() = Some(overview);
+            input.activate_on_hotkey_release.set(true);
+            input.hotkeys_active.set(true);
+            *input.hotkeys.borrow_mut() = vec![HashMap::from_iter([(
+                Hotkey::new(Modifiers::ALT_LEFT, KeyCode::KeyA),
+                vec![WmCommand::Wm(wm_controller::WmCmd::ShowMissionControlAll)],
+            )])];
+            let key = CGEvent::new_keyboard_event(None, 0, true).unwrap();
+            CGEvent::set_flags(Some(&key), CGEventFlags::MaskAlternate);
+            input.on_event(CGEventType::KeyDown, &key, None);
+            input.mission_control_active.set(true);
+            let action = CGEvent::new_keyboard_event(None, code, true).unwrap();
+            CGEvent::set_flags(Some(&action), CGEventFlags::empty());
+            input.on_event(CGEventType::KeyDown, &action, None);
+            match rx.try_recv().unwrap().1 {
+                OverviewEvent::Input(OverviewInput::Activate) => assert!(activate),
+                OverviewEvent::Input(OverviewInput::Dismiss) => assert!(!activate),
+                unexpected => panic!("unexpected overview action: {unexpected:?}"),
+            }
+            CGEvent::set_flags(Some(&key), CGEventFlags::empty());
+            input.on_event(CGEventType::KeyUp, &key, None);
+            assert!(
+                rx.try_recv().is_err(),
+                "releasing a cancelled opener must not activate again"
+            );
+        }
+    }
+
+    #[test]
+    fn unbound_keyboard_input_releases_lifecycle_guard_without_consuming_keys() {
+        let (input, mut wm_rx, mut events_rx) = input();
+        assert!(input.hotkeys.borrow().is_empty());
+        assert_ne!(input.desired_event_mask() & (1u64 << CGEventType::KeyDown.0), 0);
+        let event = CGEvent::new_keyboard_event(None, 0, true).unwrap();
+        CGEvent::set_flags(Some(&event), CGEventFlags::empty());
+        assert!(input.on_event(CGEventType::KeyDown, &event, None));
+        assert!(matches!(events_rx.try_recv().unwrap().1, Event::KeyboardInput));
+        assert!(events_rx.try_recv().is_err());
+        assert!(wm_rx.try_recv().is_err());
+
+        // Releases and Rift's own posted keys cannot release the wake guard.
+        assert!(input.on_event(CGEventType::KeyUp, &event, None));
+        CGEvent::set_integer_value_field(
+            Some(&event),
+            CGEventField::EventSourceUserData,
+            0x5249_4654,
+        );
+        assert!(input.on_event(CGEventType::KeyDown, &event, None));
+        assert!(events_rx.try_recv().is_err());
+        assert!(wm_rx.try_recv().is_err());
     }
 
     #[test]
@@ -2072,29 +2558,36 @@ mod tests {
     }
 
     #[test]
-    fn releases_are_always_forwarded_when_mouse_features_are_enabled() {
-        let (input, _, mut events_rx) = input();
-        input.state.borrow_mut().mouse_features_enabled = false;
-        let event = CGEvent::new_mouse_event(
-            None,
-            CGEventType::LeftMouseUp,
-            CGPoint::new(20.0, 30.0),
-            objc2_core_graphics::CGMouseButton::Left,
-        )
-        .unwrap();
-        assert!(input.on_event(CGEventType::LeftMouseUp, &event, None));
-        assert!(events_rx.try_recv().is_err());
-        input.state.borrow_mut().mouse_features_enabled = true;
-        assert!(input.on_event(CGEventType::LeftMouseUp, &event, None));
-        assert!(matches!(
-            events_rx.try_recv().unwrap().1,
-            Event::MouseUp(crate::actor::drag::MouseButton::Left)
-        ));
-        assert!(input.on_event(CGEventType::LeftMouseUp, &event, None));
-        assert!(matches!(
-            events_rx.try_recv().unwrap().1,
-            Event::MouseUp(crate::actor::drag::MouseButton::Left)
-        ));
+    fn releases_reach_reactor_with_drag_drop_disabled() {
+        for enabled in [false, true] {
+            for (event_type, cg_button, button) in [
+                (
+                    CGEventType::LeftMouseUp,
+                    objc2_core_graphics::CGMouseButton::Left,
+                    crate::actor::drag::MouseButton::Left,
+                ),
+                (
+                    CGEventType::RightMouseUp,
+                    objc2_core_graphics::CGMouseButton::Right,
+                    crate::actor::drag::MouseButton::Right,
+                ),
+            ] {
+                let (input, _, mut events_rx) = input();
+                input.state.borrow_mut().mouse_features_enabled = enabled;
+                input.state.borrow_mut().event_processing_enabled = true;
+                // Native AX moves/resizes can acquire a drag regardless of drag_drop.enabled.
+                input.native_motion_active.store(true, Ordering::Release);
+                assert_ne!(input.desired_event_mask() & (1u64 << event_type.0), 0);
+                let event =
+                    CGEvent::new_mouse_event(None, event_type, CGPoint::new(20.0, 30.0), cg_button)
+                        .unwrap();
+                assert!(input.on_event(event_type, &event, None));
+                assert!(matches!(
+                    events_rx.try_recv().unwrap().1,
+                    Event::MouseUp(released) if released == button
+                ));
+            }
+        }
     }
 
     #[test]

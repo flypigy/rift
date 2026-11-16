@@ -10,6 +10,7 @@ use crate::actor::app::WindowId;
 use crate::actor::menu_bar;
 use crate::actor::reactor::{Event, Reactor, Sender};
 use crate::common::collections::{HashMap, HashSet};
+use crate::layout_engine::systems::LayoutSystem;
 use crate::model::server::{
     RuntimeDisplayData, RuntimeWindowData, RuntimeWorkspaceData, protocol_rect,
 };
@@ -93,6 +94,21 @@ pub struct ReactorQueryHandle {
 }
 
 impl ReactorQueryHandle {
+    pub(crate) fn overview_snapshot(
+        &self,
+        shared: bool,
+        generation: u64,
+        moved: Option<WindowId>,
+        reply: crate::actor::mission_control::Sender,
+    ) {
+        self.tx.send(Event::Query(QueryRequest::Overview {
+            shared,
+            generation,
+            moved,
+            reply,
+        }));
+    }
+
     pub(super) fn new(tx: Sender) -> Self {
         Self { tx }
     }
@@ -164,6 +180,12 @@ impl ReactorQueryHandle {
 
 #[derive(Debug)]
 pub enum QueryRequest {
+    Overview {
+        shared: bool,
+        generation: u64,
+        moved: Option<WindowId>,
+        reply: crate::actor::mission_control::Sender,
+    },
     Workspaces {
         space_id: Option<SpaceId>,
         resp: SyncSender<Vec<RuntimeWorkspaceData>>,
@@ -198,6 +220,32 @@ pub enum QueryRequest {
 impl Reactor {
     pub(super) fn handle_query_request(&mut self, req: QueryRequest) {
         match req {
+            QueryRequest::Overview {
+                shared,
+                generation,
+                moved,
+                reply,
+            } => {
+                // Reading overview metadata must not commit native presentations:
+                // that can notify the overview again and create a refresh loop.
+                let displays = self.query_displays();
+                let workspaces = if shared {
+                    self.query_workspaces(None)
+                } else {
+                    displays
+                        .iter()
+                        .filter(|d| d.is_visible_space)
+                        .filter_map(|d| d.info.space)
+                        .flat_map(|space| self.query_workspaces(Some(space)))
+                        .collect()
+                };
+                reply.send(crate::actor::mission_control::Event::Snapshot {
+                    generation,
+                    moved,
+                    displays,
+                    workspaces,
+                });
+            }
             QueryRequest::Workspaces { space_id, resp } => {
                 let _ = resp.send(self.query_workspaces(space_id));
             }
@@ -303,11 +351,8 @@ impl Reactor {
     ) -> Vec<(usize, VirtualWorkspaceId)> {
         let visible: Vec<_> = self.iter_active_spaces().collect();
         let store = self.layout_manager.layout_engine.workspaces();
-        let context = crate::model::virtual_workspace::WorkspaceContext {
-            space,
-            visible: &visible,
-            navigation: Default::default(),
-        };
+        let context =
+            crate::model::virtual_workspace::WorkspaceContext { space, visible: &visible };
         let view = store.workspace_view(context);
         view.filter(|(_, id)| owner.is_none_or(|owner| store[*id].space == owner))
             .collect()
@@ -517,8 +562,26 @@ impl Reactor {
                 .layout_mode()
                 .to_string();
 
+            let workspace = &self.layout_manager.layout_engine.workspaces()[*workspace_id];
+            let belongs = |id: &WindowId| windows.iter().any(|w| w.id == *id);
+            let focused_window = is_active
+                .then(|| self.main_window())
+                .flatten()
+                .filter(belongs)
+                .or_else(|| workspace.last_focused().filter(belongs))
+                .or_else(|| {
+                    workspace.active_layout().and_then(|layout| {
+                        workspace.layout_system.selected_window(layout).filter(belongs)
+                    })
+                })
+                .or_else(|| windows.first().map(|w| w.id));
             workspaces.push(RuntimeWorkspaceData {
                 workspace_id: *workspace_id,
+                focused_window,
+                display_frame: self
+                    .space_state
+                    .screen_by_space(space)
+                    .map_or(CGRect::ZERO, |s| s.frame),
                 space,
                 id: format!("{:?}", workspace_id),
                 name: workspace_name.to_string(),
@@ -633,11 +696,7 @@ impl Reactor {
             index.or_else(|| store.workspace_index(space, store.active_workspace(space)?))?;
         let visible: Vec<_> = self.iter_active_spaces().collect();
         store.resolve_workspace(
-            crate::model::virtual_workspace::WorkspaceContext {
-                space,
-                visible: &visible,
-                navigation: Default::default(),
-            },
+            crate::model::virtual_workspace::WorkspaceContext { space, visible: &visible },
             &crate::common::config::WorkspaceSelector::Index(index),
         )
     }
@@ -654,6 +713,20 @@ impl Reactor {
             .unwrap_or_default()
     }
 
+    /// Claimed windows hold no workspace; report them on their last observed native Space,
+    /// else their saved workspace's, without asking WindowServer. Like other windows, one
+    /// suspended in native fullscreen is on no user Space.
+    fn claimed_window_space(&self, wid: WindowId) -> Option<SpaceId> {
+        let windows = &self.state.windows;
+        if windows.native_fullscreen_record_for_window(wid).is_some() {
+            return None;
+        }
+        windows.native_space(wid).or_else(|| {
+            let workspace = windows.claim(wid)?.workspace()?;
+            self.layout_manager.layout_engine.workspaces().workspace_space(workspace)
+        })
+    }
+
     pub fn query_windows(&self, space_id: Option<SpaceId>) -> Vec<RuntimeWindowData> {
         let target_space = space_id.or_else(|| self.default_query_space());
 
@@ -664,9 +737,15 @@ impl Reactor {
                 .workspaces()
                 .windows_in_active_workspace(&self.state.windows, space);
             let logical_positions = self.logical_window_positions_for(Some(space), None);
+            let claimed = self
+                .state
+                .windows
+                .claimed_windows()
+                .filter(|wid| self.claimed_window_space(*wid) == Some(space));
 
             let mut windows: Vec<RuntimeWindowData> = active_windows
                 .into_iter()
+                .chain(claimed)
                 .filter_map(|wid| {
                     let mut wd = self.create_window_data(wid)?;
                     if !wd.is_floating {
@@ -688,7 +767,23 @@ impl Reactor {
     }
 
     pub fn query_window_info(&self, window_id: WindowId) -> Option<RuntimeWindowData> {
-        self.create_window_data(window_id)
+        let mut data = self.create_window_data(window_id)?;
+        if let Some(workspace) = self.state.windows.workspace_for_window(window_id) {
+            let engine = &self.layout_manager.layout_engine;
+            let ws = &engine.workspaces()[workspace];
+            if let crate::layout_engine::systems::LayoutSystemKind::Scrolling(system) =
+                &ws.layout_system
+                && let Some(layout) = engine.workspaces().active_layout(ws.space, workspace)
+                && let Some((camera, frames)) = system.presentation(layout)
+                && let Some((_, frame, fixed)) =
+                    frames.into_iter().find(|(id, _, _)| *id == window_id)
+            {
+                let scale =
+                    self.space_state.screen_by_space(ws.space).map_or(1., |s| s.backing_scale);
+                data.layout_frame = Some(camera.target_frame(frame, fixed, scale));
+            }
+        }
+        Some(data)
     }
 
     pub fn query_applications(&self) -> Vec<ApplicationData> {
@@ -792,7 +887,8 @@ impl Reactor {
     }
 
     pub(crate) fn serialize_state(&mut self) -> Result<String, serde_json::Error> {
-        let layout_engine_ron = self.layout_manager.layout_engine.serialize_to_string();
+        let layout_engine_ron =
+            self.layout_manager.layout_engine.serialize_to_string(&self.state.windows);
         let workspaces = self.layout_manager.layout_engine.workspaces();
         let totals = (
             workspaces.workspaces.len(),

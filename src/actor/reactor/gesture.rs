@@ -1,7 +1,7 @@
 //! Paced consumption of cumulative physical motion; no layout preparation here.
 use std::time::{Duration, Instant};
 
-use super::{Reactor, command_workflow};
+use super::Reactor;
 use crate::actor::gesture::{Context, Control, Lifecycle, Motion};
 use crate::layout_engine::{
     EventResponse, LayoutCommand, LayoutId, LayoutSystem, LayoutSystemKind, VirtualWorkspaceId,
@@ -310,36 +310,14 @@ impl Reactor {
         next: bool,
         haptic: Option<crate::common::config::HapticPattern>,
     ) -> bool {
-        let (visible_spaces, visible_space_frames) = self.visible_spaces_for_layout(false);
-        let navigation = if visible_spaces.len() > 1 {
-            crate::model::virtual_workspace::NavigationScope::GlobalVisible
-        } else {
-            crate::model::virtual_workspace::NavigationScope::Local
-        };
-        let space = if navigation == crate::model::virtual_workspace::NavigationScope::GlobalVisible
-            && self.layout_manager.layout_engine.workspaces().settings.mode
-                == crate::common::config::WorkspaceMode::Global
-        {
-            self.command_context_space().unwrap_or(space)
-        } else {
-            space
-        };
-        let result = command_workflow::handle_command_layout(
-            &mut self.state,
-            &mut self.layout_manager,
-            &mut self.workspace_switch_manager,
-            command_workflow::LayoutCommandPayload {
-                command: if next {
-                    LayoutCommand::NextWorkspace(skip_empty)
-                } else {
-                    LayoutCommand::PrevWorkspace(skip_empty)
-                },
-                command_space: Some(space),
-                navigation,
-                visible_spaces,
-                visible_space_frames,
-                post_arrange_mouse_warp: None,
+        let space = self.command_context_space().unwrap_or(space);
+        let result = self.dispatch_layout_command(
+            if next {
+                LayoutCommand::NextWorkspace(skip_empty)
+            } else {
+                LayoutCommand::PrevWorkspace(skip_empty)
             },
+            Some(space),
         );
         let Ok(outcome) = result else { return false };
         // A global target visible on another display only moves focus there.
@@ -450,7 +428,7 @@ mod tests {
         );
         let mut cfg = Config::default();
         cfg.settings.layout.scrolling.gestures.enabled = true;
-        cfg.settings.layout.scrolling.gestures.animate = Some(false);
+        cfg.settings.layout.scrolling.animate = Some(false);
         cfg.settings.layout.scrolling.gestures.invert_horizontal = invert;
         cfg.settings.layout.scrolling.gestures.propagate_to_workspace_swipe = propagate;
         cfg.settings.layout.scrolling.gestures.workspace_switch_threshold = threshold;
@@ -463,7 +441,7 @@ mod tests {
         let settings = Settings::new(config);
         let c = Control::new(config);
         c.configure(settings, true, Vec::new());
-        let context = Context::new(
+        let mut context = Context::new(
             1,
             0,
             space,
@@ -475,6 +453,8 @@ mod tests {
             Duration::ZERO,
         )
         .unwrap();
+        // The test reactor's layout engine is built separately from this fixture.
+        context.action.animate = config.settings.layout.scrolling.animate;
         let motion = c.clone();
         r.gesture_event(Lifecycle::Begin {
             context: context.clone(),
@@ -505,7 +485,7 @@ mod tests {
         assert!(r.layout_manager.layout_engine.workspaces_mut().set_active_workspace(a, ids[1]));
         let mut config = Config::default();
         config.settings.layout.scrolling.gestures.enabled = true;
-        config.settings.layout.scrolling.gestures.animate = Some(false);
+        config.settings.layout.scrolling.animate = Some(false);
         config.settings.gestures.haptics_enabled = false;
         config.settings.gestures.skip_empty = false;
         let (context, _, _) = begin(&mut r, &config, a);
@@ -554,7 +534,7 @@ mod tests {
             assert!(workspace.is_some());
             let mut config = Config::default();
             config.settings.layout.scrolling.gestures.enabled = true;
-            config.settings.layout.scrolling.gestures.animate = Some(false);
+            config.settings.layout.scrolling.animate = Some(false);
             config.settings.gestures.haptics_enabled = false;
             config.settings.gestures.skip_empty = false;
             let (context, _, _) = begin(&mut r, &config, space);
@@ -669,7 +649,7 @@ mod tests {
 
             let mut config = Config::default();
             config.settings.layout.scrolling.gestures.enabled = true;
-            config.settings.layout.scrolling.gestures.animate = Some(false);
+            config.settings.layout.scrolling.animate = Some(false);
 
             let (_, _, motion) = begin(&mut r, &config, space);
             for (total_x, time) in [(20.0, 10), (40.0, 20)] {
