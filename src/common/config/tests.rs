@@ -465,14 +465,14 @@ fn command_arrays_parse_save_and_follow_keymap_renames() {
         ])
     };
     let config = Config::parse(text).unwrap();
-    assert_eq!(config.binding_mode_specs[0].1, [(
-        "Alt + 1".to_string(),
-        sequence("move")
-    )]);
-    assert_eq!(config.binding_mode_specs[1].1, [(
-        "1".to_string(),
-        sequence("default")
-    )]);
+    assert_eq!(
+        config.binding_mode_specs[0].1,
+        [("Alt + 1".to_string(), sequence("move"))]
+    );
+    assert_eq!(
+        config.binding_mode_specs[1].1,
+        [("1".to_string(), sequence("default"))]
+    );
 
     let missing = text.replace("\"default\" }]", "\"missing\" }]");
     assert!(Config::parse(&missing).unwrap_err().to_string().contains("missing"));

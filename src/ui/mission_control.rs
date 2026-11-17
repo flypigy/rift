@@ -140,7 +140,9 @@ fn filter_workspaces(workspaces: &mut Vec<RuntimeWorkspaceData>, show_empty: boo
     }
 }
 
-fn vertical_scroll(delta: CGPoint) -> bool { delta.y.abs() >= delta.x.abs() }
+fn vertical_scroll(delta: CGPoint) -> bool {
+    delta.y.abs() >= delta.x.abs()
+}
 
 fn scrolled_horizontal_offset(
     display: CGRect,
@@ -460,7 +462,9 @@ fn accent_border() -> [f32; 4] {
 }
 
 // Draw on the fitted image, leaving the caption and transparent card gutters unboxed.
-fn set_preview_border(image: &CALayer, width: f64) { image.setBorderWidth(width); }
+fn set_preview_border(image: &CALayer, width: f64) {
+    image.setBorderWidth(width);
+}
 
 fn color(r: f64, g: f64, b: f64, a: f64) -> CFRetained<CGColor> {
     CGColor::new_generic_rgb(r, g, b, a)
@@ -1057,7 +1061,9 @@ impl OverviewSession {
         Some(session)
     }
 
-    pub(crate) fn is_empty(&self) -> bool { self.displays.is_empty() }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.displays.is_empty()
+    }
 
     pub(crate) fn take_drop(&mut self) -> Option<crate::actor::reactor::OverviewDrop> {
         self.drop.take()
